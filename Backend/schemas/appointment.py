@@ -1,36 +1,68 @@
-from pydantic import BaseModel
+from datetime import datetime
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional
 
-# Create appointment
+
+# ================================
+# CREATE APPOINTMENT
+# ================================
 class AppointmentCreate(BaseModel):
-    doctor_id: int
-    patient_name: str
-    time: str
-    reason: str | None = ""
+    doctor_id: int = Field(..., gt=0)
+    patient_name: str = Field(..., min_length=2)
+    patient_phone: str = Field(..., min_length=6)
+    patient_email: Optional[EmailStr] = None
+    time: datetime
+    notes: Optional[str] = None
 
-# Reschedule
+
+# ================================
+# RESCHEDULE
+# ================================
 class AppointmentReschedule(BaseModel):
-    time: str
+    time: datetime
 
-# Doctor
+
+# ================================
+# STATUS UPDATE (Doctor)
+# ================================
 class AppointmentStatusUpdate(BaseModel):
     status: str
 
-# Add notes
-class AppointmentNotes(BaseModel):
-    notes: str
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "COMPLETED"
+            }
+        }
 
-# Response model
+
+# ================================
+# ADD NOTES
+# ================================
+class AppointmentNotes(BaseModel):
+    notes: str = Field(..., min_length=1)
+
+
+# ================================
+# ADMIN UPDATE
+# ================================
+class AdminUpdateAppointment(BaseModel):
+    time: Optional[datetime] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+
+# ================================
+# RESPONSE MODEL (IMPORTANT)
+# ================================
 class AppointmentResponse(BaseModel):
     id: int
     doctor_id: int
-    patient_name: str
-    time: str
+    patient_id: int
+    start_time: datetime
+    end_time: datetime
     status: str
-    reason: str
-    notes: str
+    notes: Optional[str]
 
-
-class AdminUpdateAppointment(BaseModel):
-    time: str | None = None
-    status: str | None = None
-    notes: str | None = None
+    class Config:
+        from_attributes = True

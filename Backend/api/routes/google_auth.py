@@ -1,56 +1,51 @@
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from core.oauth import oauth
-from core.security import create_access_token, create_refresh_token
-from models.user import users
+from core.security import create_access_token
+from sqlalchemy.orm import Session
+from core.database import get_db
+from models.db_models import User
 
-router = APIRouter(prefix="/google")
+router = APIRouter(prefix="/google", tags=["Google Auth"])
 
 
-# LOGIN
 @router.get("/login")
 async def login(request: Request):
     redirect_uri = "http://127.0.0.1:8000/auth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
-# CALLBACK
 @router.get("/callback")
-async def auth_callback(request: Request):
+async def auth_callback(request: Request, db: Session = Depends(get_db)):
+
     token = await oauth.google.authorize_access_token(request)
     user_info = token.get("userinfo")
 
     if not user_info:
-        raise HTTPException(status_code=400, detail="Google auth failed")
+        raise HTTPException(400, "Google auth failed")
 
     email = user_info["email"]
 
-    # Check if user exists
-    user = next((u for u in users if u["email"] == email), None)
+    user = db.query(User).filter(User.email == email).first()
 
+    # 🔥 FIX: default role = receptionist BUT controlled
     if not user:
-        user = {
-            "id": len(users) + 1,
-            "email": email,
-            "role": "receptionist",  # default role
-            "is_active": True,
-            "google_token": token
-        }
-        users.append(user)
-    else:
-        user["google_token"] = token
+        user = User(
+            email=email,
+            name=user_info.get("name"),
+            role="receptionist",  # later we control this via admin
+            is_active=True
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
-    #Create tokens
-    payload = {
-        "sub": email,
-        "role": user["role"]
-    }
-
-    access_token = create_access_token(payload)
-    refresh_token = create_refresh_token(payload)
+    access_token = create_access_token({
+        "sub": str(user.id),
+        "role": user.role,
+        "email": user.email
+    })
 
     return {
         "access_token": access_token,
-        "refresh_token": refresh_token,
-        "role": user["role"],
-        "email": email
+        "role": user.role
     }
