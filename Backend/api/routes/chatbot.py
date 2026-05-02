@@ -3,26 +3,26 @@ from sqlalchemy.orm import Session
 from core.database import get_db
 from services.chatbot_service import ChatbotService
 from services.llm_service import LLMService
-
+from schemas.chatbot import ChatRequest
 router = APIRouter(tags=["Chatbot"])
 
 
+
 @router.post("/")
-async def chat(request: Request, db: Session = Depends(get_db)):
+async def chat(payload: ChatRequest, db: Session = Depends(get_db)):
 
-    data = await request.json()
-    message = data.get("message")
-    user_id = data.get("user_id")
+    try:
+        message = payload.message
+        user_id = payload.user_id
 
-    if not message:
-        return {"error": "No message"}
+        result = ChatbotService.handle_chat(db, user_id, message)
 
-    result = ChatbotService.handle_chat(db, user_id, message)
+        return result
 
-    print("CHATBOT RESULT:", result)
+    except Exception as e:
+        print("CHATBOT ERROR:", str(e))
+        return {"error": str(e)}
 
-    return result
-    
 
 # LLM PART
 @router.post("/intent")
