@@ -1,11 +1,28 @@
-from sqlalchemy.orm import Session
-from core.database import SessionLocal
-from models.db_models import User, Doctor, Patient, Appointment, WorkingHours
+"""
+Database Seeding Script for Smart Clinic System
+
+This script populates the database with initial data including:
+- Admin, Doctor, and Receptionist users
+- Doctor profiles with specializations
+- Working hours (Monday-Friday, 9 AM - 5 PM)
+- Sample patients
+- Sample appointments with reminder times
+
+Usage:
+    cd /path/to/backend
+    source venv/bin/activate
+    PYTHONPATH=/path/to/backend python3 scripts/seed.py
+
+Note: PYTHONPATH is required for proper module imports.
+"""
+
 from datetime import datetime, timedelta
+
+from sqlalchemy.orm import Session
+
+from core.database import SessionLocal
 from core.security import hash_password
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+from models.db_models import Appointment, Doctor, Patient, User, WorkingHours
 
 def seed():
     db: Session = SessionLocal()
@@ -30,6 +47,7 @@ def seed():
         email="drmagdyfahmi9@gmail.com",
         password=hash_password("admin123"),
         role="admin",
+        name="Admin User",
         is_active=True
     )
 
@@ -48,11 +66,20 @@ def seed():
         name="Dr. Sara Ali",
         is_active=True
     )
+    
+    doctor_user3 = User(
+        email="omarmenna041@gmail.com",
+        password=hash_password("doctor3"),
+        role="doctor",
+        name="Dr. Khalid Mahmoud",
+        is_active=True
+    )
 
     receptionist = User(
         email="mennaomardevops@gmail.com",
         password=hash_password("receptionist123"),
         role="receptionist",
+        name="Receptionist User",
         is_active=True
     )
 
@@ -72,6 +99,11 @@ def seed():
     doctor2 = Doctor(
         user_id=doctor_user2.id,
         specialization="Dermatology"
+    )
+    
+    doctor2 = Doctor(
+        user_id=doctor_user3.id,
+        specialization="Internist"
     )
 
     db.add_all([doctor1, doctor2])
@@ -125,20 +157,27 @@ def seed():
 
     now = datetime.now()
 
+    # Create appointments 2 days from now to ensure they're in the future
+    appt1_start = now.replace(hour=10, minute=0, second=0, microsecond=0) + timedelta(days=2)
     appt1 = Appointment(
         doctor_id=doctor1.id,
         patient_id=patient1.id,
-        start_time=now + timedelta(days=1, hours=1),
-        end_time=now + timedelta(days=1, hours=1, minutes=30),
-        status="SCHEDULED"
+        start_time=appt1_start,
+        end_time=appt1_start + timedelta(minutes=30),
+        status="SCHEDULED",
+        reminder_time=appt1_start - timedelta(hours=1),  # 1 hour before
+        reminder_sent=False
     )
 
+    appt2_start = now.replace(hour=14, minute=30, second=0, microsecond=0) + timedelta(days=3)
     appt2 = Appointment(
         doctor_id=doctor2.id,
         patient_id=patient2.id,
-        start_time=now + timedelta(days=2, hours=2),
-        end_time=now + timedelta(days=2, hours=2, minutes=30),
-        status="SCHEDULED"
+        start_time=appt2_start,
+        end_time=appt2_start + timedelta(minutes=30),
+        status="SCHEDULED",
+        reminder_time=appt2_start - timedelta(hours=1),  # 1 hour before
+        reminder_sent=False
     )
 
     db.add_all([appt1, appt2])
@@ -148,4 +187,5 @@ def seed():
 
 
 if __name__ == "__main__":
+    # Run with: PYTHONPATH=/path/to/backend python3 scripts/seed.py
     seed()

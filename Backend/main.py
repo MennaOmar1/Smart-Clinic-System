@@ -4,15 +4,21 @@ load_dotenv()
 import os
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
+<<<<<<< HEAD
 
 from api.routes import (
     auth, google_auth, admin, appointments,
     protected, doctor, auth_refresh, chatbot
 )
 
+=======
+from api.routes import auth, admin, appointments, protected, doctor, auth_refresh, chatbot
+from api.routes import google_auth
+>>>>>>> 9b23da4 ( changes)
 from core.database import Base, engine
 from core.scheduler import send_reminders
 from apscheduler.schedulers.background import BackgroundScheduler
+<<<<<<< HEAD
 
 # (اختياري - لتفادي crash لو DB مش شغال)
 import logging
@@ -20,9 +26,18 @@ import logging
 app = FastAPI()
 
 # Middleware
+=======
+from sqlalchemy import text
+import os
+
+app = FastAPI()
+
+SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "supersecretkey123456")
+
+>>>>>>> 9b23da4 ( changes)
 app.add_middleware(
     SessionMiddleware,
-    secret_key="supersecretkey123456"
+    secret_key=SESSION_SECRET_KEY
 )
 
 # =========================
@@ -36,9 +51,20 @@ def startup_db():
     except Exception as e:
         print("❌ Database connection failed:", e)
 
+<<<<<<< HEAD
 # =========================
 # ROUTERS
 # =========================
+=======
+# ensure optional column exists for existing DBs
+with engine.connect() as conn:
+    conn.execute(text(
+        "ALTER TABLE doctors ADD COLUMN IF NOT EXISTS google_token TEXT"
+    ))
+    conn.commit()
+
+# routers
+>>>>>>> 9b23da4 ( changes)
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(google_auth.router, prefix="/auth", tags=["Google Auth"])
 app.include_router(appointments.router, prefix="/appointments", tags=["Appointments"])

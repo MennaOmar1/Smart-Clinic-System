@@ -2,8 +2,11 @@ from datetime import datetime, timedelta
 from jose import jwt
 from passlib.context import CryptContext
 from core.config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+import os
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
 
 # ======================
@@ -20,12 +23,20 @@ def verify_password(plain, hashed):
 # ======================
 # JWT
 # ======================
-def create_access_token(data: dict):
+def create_access_token(data: dict, token_type: str = "access"):
     to_encode = data.copy()
+    to_encode["type"] = token_type
 
-    expire = datetime.utcnow() + timedelta(
-        minutes=ACCESS_TOKEN_EXPIRE_MINUTES
-    )
+    if token_type == "access":
+        expire = datetime.utcnow() + timedelta(
+            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+        )
+    elif token_type == "refresh":
+        expire = datetime.utcnow() + timedelta(
+            days=REFRESH_TOKEN_EXPIRE_DAYS
+        )
+    else:
+        raise ValueError("Invalid token type")
 
     to_encode.update({"exp": expire})
 

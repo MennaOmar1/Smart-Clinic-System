@@ -15,7 +15,8 @@ oauth.register(
     timeout=10.0
 )
 
-print("CLIENT ID:", os.getenv("GOOGLE_CLIENT_ID"))
-print("CLIENT SECRET:", os.getenv("GOOGLE_CLIENT_SECRET"))
+# Temporarily disabled OAuth print statements
+# print("CLIENT ID:", os.getenv("GOOGLE_CLIENT_ID"))
+# print("CLIENT SECRET:", os.getenv("GOOGLE_CLIENT_SECRET"))
 
 

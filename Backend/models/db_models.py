@@ -19,6 +19,7 @@ class Doctor(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     specialization = Column(String)
+    google_token = Column(String, nullable=True)  # Stored as JSON string
 
     user = relationship("User")
 
@@ -47,6 +48,9 @@ class Appointment(Base):
     google_event_id = Column(String, nullable=True)
     reminder_sent = Column(Boolean, default=False)
     reminder_time = Column(DateTime, nullable=True)
+
+    doctor = relationship("Doctor")
+    patient = relationship("Patient")
 
 class WorkingHours(Base):
     __tablename__ = "working_hours"

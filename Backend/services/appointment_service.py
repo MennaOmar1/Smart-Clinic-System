@@ -21,6 +21,9 @@ class AppointmentService:
             db.add(patient)
             db.commit()
             db.refresh(patient)
+        elif email and not patient.email:  # Update email if not set
+            patient.email = email
+            db.commit()
 
         return patient
 
@@ -149,13 +152,22 @@ class AppointmentService:
         db.commit()
         db.refresh(appointment)
 
-        #  Google sync 
+        #  Google sync - use doctor's stored token if available
         google_event_id = None
+        
+        # Use provided credentials or try to get stored ones
+        google_creds = credentials
+        if not google_creds and doctor.google_token:
+            import json
+            try:
+                google_creds = json.loads(doctor.google_token)
+            except:
+                pass
 
-        if credentials:
+        if google_creds:
             google_event_id = CalendarSyncService.create(
                 appointment,
-                credentials
+                google_creds
             )
 
             if google_event_id:
@@ -240,13 +252,15 @@ class AppointmentService:
             raise Exception("Slot not available")
 
         patient = AppointmentService.get_or_create_patient(db, patient_name, patient_phone)
+        reminder_time = start_time - timedelta(hours=1)
 
         appointment = Appointment(
             doctor_id=doctor_id,
             patient_id=patient.id,
             start_time=start_time,
             end_time=start_time + timedelta(minutes=30),
-            status="SCHEDULED"
+            status="SCHEDULED",
+            reminder_time=reminder_time
         )
 
         db.add(appointment)

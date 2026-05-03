@@ -19,13 +19,20 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
     if not verify_password(data.password, user.password):
         raise HTTPException(401, "Invalid credentials")
 
-    token = create_access_token({
+    access_token = create_access_token({
         "sub": str(user.id),
         "role": user.role,
         "email": user.email
-    })
+    }, token_type="access")
+
+    refresh_token = create_access_token({
+        "sub": str(user.id),
+        "role": user.role,
+        "email": user.email
+    }, token_type="refresh")
 
     return {
-        "access_token": token,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer"
     }

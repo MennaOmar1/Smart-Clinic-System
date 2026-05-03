@@ -1,6 +1,8 @@
-from models.db_models import Doctor
-from models.db_models import Appointment
-from datetime import datetime
+import uuid
+import uuid
+from models.db_models import Doctor, Patient, Appointment
+from services.appointment_service import AppointmentService
+from datetime import datetime, timedelta
 
 def get_doctors_by_specialization(db, specialization):
     return db.query(Doctor).filter(
@@ -11,24 +13,32 @@ def get_doctors_by_specialization(db, specialization):
 def create_booking(db, data):
 
     doctor_id = data.get("doctor_id")
-    patient_id = data.get("user_id")
     start_time = data.get("start_time")
+    patient_name = data.get("patient_name", "Chat User")
+    patient_email = data.get("patient_email")
+    patient_phone = data.get("patient_phone")
 
-    if not doctor_id or not patient_id or not start_time:
+    if not doctor_id or not start_time:
         raise ValueError("Missing booking data")
 
-    appointment = Appointment(
+    if isinstance(start_time, str):
+        try:
+            start_time = datetime.fromisoformat(start_time)
+        except Exception:
+            raise ValueError("Invalid start_time format")
+
+    if not patient_phone:
+        patient_phone = f"chat-{uuid.uuid4()}"
+
+    return AppointmentService.book_appointment(
+        db=db,
         doctor_id=doctor_id,
-        patient_id=patient_id,
         start_time=start_time,
-        status="SCHEDULED"
+        patient_name=patient_name,
+        patient_phone=patient_phone,
+        patient_email=patient_email,
+        notes=data.get("notes")
     )
-
-    db.add(appointment)
-    db.commit()
-    db.refresh(appointment)
-
-    return appointment
 
 
 def set_doctor(session, doctor_id):
