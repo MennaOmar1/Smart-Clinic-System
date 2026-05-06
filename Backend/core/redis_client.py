@@ -13,13 +13,19 @@ try:
     print("✓ Redis connected successfully")
 except Exception as e:
     print(f"⚠ Redis connection failed: {e}")
-    print("Chatbot session management will not work properly")
-    # Create a mock redis object that raises warnings
+    print("⚠ Redis unavailable: using in-memory fallback for session storage")
     class MockRedis:
+        def __init__(self):
+            self._store = {}
+
         def get(self, key):
-            return None
+            return self._store.get(key)
+
         def set(self, key, value, *args, **kwargs):
-            print(f"⚠ MockRedis: Cannot store session (Redis unavailable)")
+            self._store[key] = value
+
         def delete(self, key):
-            pass
+            if key in self._store:
+                del self._store[key]
+
     r = MockRedis()

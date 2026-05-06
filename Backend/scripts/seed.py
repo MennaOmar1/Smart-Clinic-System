@@ -68,7 +68,7 @@ def seed():
     )
     
     doctor_user3 = User(
-        email="omarmenna041@gmail.com",
+        email="dr.khalid.mahmoud@gmail.com",
         password=hash_password("doctor3"),
         role="doctor",
         name="Dr. Khalid Mahmoud",
@@ -83,7 +83,7 @@ def seed():
         is_active=True
     )
 
-    db.add_all([admin, doctor_user1, doctor_user2, receptionist])
+    db.add_all([admin, doctor_user1, doctor_user2, doctor_user3, receptionist])
     db.commit()
 
     # =========================
@@ -100,13 +100,13 @@ def seed():
         user_id=doctor_user2.id,
         specialization="Dermatology"
     )
-    
-    doctor2 = Doctor(
+
+    doctor3 = Doctor(
         user_id=doctor_user3.id,
         specialization="Internist"
     )
 
-    db.add_all([doctor1, doctor2])
+    db.add_all([doctor1, doctor2, doctor3])
     db.commit()
 
     # =========================
@@ -116,7 +116,7 @@ def seed():
 
     working_hours = []
 
-    for doctor in [doctor1, doctor2]:
+    for doctor in [doctor1, doctor2, doctor3]:
         for day in range(0, 5):  # Monday → Friday
             working_hours.append(
                 WorkingHours(

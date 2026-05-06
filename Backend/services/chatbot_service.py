@@ -34,8 +34,23 @@ def ensure_session_structure(session):
 
 SPECIALIZATION_MAP = {
     "dermatologist": "Dermatology",
+    "dermatology": "Dermatology",
     "cardiologist": "Cardiology",
-    "neurologist": "Neurology"
+    "cardiology": "Cardiology",
+    "neurologist": "Neurology",
+    "neurology": "Neurology",
+    "internist": "Internist",
+    "internal medicine": "Internist",
+    "باطنه": "Internist",
+    "باطنية": "Internist",
+    "امراض داخلية": "Internist"
+}
+
+SPECIALIZATION_DISPLAY = {
+    "Dermatology": {"en": "Dermatologist", "ar": "طبيب جلدية"},
+    "Cardiology": {"en": "Cardiologist", "ar": "طبيب قلب"},
+    "Neurology": {"en": "Neurologist", "ar": "طبيب أعصاب"},
+    "Internist": {"en": "Internist", "ar": "طبيب باطنية"}
 }
 
 
@@ -43,12 +58,12 @@ def normalize_date(date_str):
     if not date_str:
         return None
 
-    date_str = str(date_str).lower()
+    date_str = str(date_str).strip().lower()
 
-    if date_str == "today":
+    if date_str in {"today", "today", "اليوم"}:
         return datetime.now().date()
 
-    if date_str == "tomorrow":
+    if date_str in {"tomorrow", "غدا", "غداً", "بكره", "بكرا"}:
         return (datetime.now() + timedelta(days=1)).date()
 
     try:
@@ -59,6 +74,32 @@ def normalize_date(date_str):
 def ensure_booking(session):
     if "booking" not in session or not isinstance(session["booking"], dict):
         session["booking"] = {}
+
+
+def normalize_specialization(specialization):
+    if not isinstance(specialization, str):
+        return None
+    normalized = specialization.strip().lower()
+    if normalized in SPECIALIZATION_MAP:
+        return SPECIALIZATION_MAP[normalized]
+    return specialization.strip().title()
+
+
+def get_specialization_display(specialization, lang="en"):
+    if not specialization:
+        return specialization
+    if specialization in SPECIALIZATION_DISPLAY:
+        return SPECIALIZATION_DISPLAY[specialization].get(lang, SPECIALIZATION_DISPLAY[specialization]["en"])
+    return specialization
+
+
+def specialization_exists(db, specialization):
+    if not specialization:
+        return False
+    specialization_lower = specialization.strip().lower()
+    available = [row[0].lower() for row in db.query(Doctor.specialization).distinct()]
+    return specialization_lower in available
+
 
 # ---------------- START ----------------
 def handle_start(db, user_id, message, session):
@@ -74,7 +115,19 @@ def handle_start(db, user_id, message, session):
     specialization = intent.get("specialization")
     suggested_reason = intent.get("suggested_reason", "")
 
-    # If no specialization found, ask user to clarify
+    if isinstance(specialization, str):
+        specialization = specialization.strip()
+        if specialization.lower() == "other":
+            specialization = None
+
+    if not specialization:
+        fallback_spec = LLMService._infer_specialization(message, lang)
+        if fallback_spec:
+            specialization = fallback_spec
+            suggested_reason = suggested_reason or (
+                "تم اكتشاف التخصص من الرسالة" if lang == "ar" else "Inferred specialization from the message"
+            )
+
     if not specialization:
         if lang == "ar":
             reply = "لم أفهم التخصص المطلوب. هل يمكنك وصف أعراضك أو ما تشكو منه؟"
@@ -84,16 +137,55 @@ def handle_start(db, user_id, message, session):
         SessionService.update(user_id, session)
         return {"reply": reply}
 
-    specialization = SPECIALIZATION_MAP.get(specialization, specialization)
+    specialization = normalize_specialization(specialization)
 
-    # If a specialization was suggested, ask user to confirm
-    if suggested_reason and not any(keyword in message.lower() for keyword in ["dermatologist", "cardiologist", "neurologist", "دكتور جلدية", "طبيب قلب", "طبيب أعصاب"]):
+    specialization_display = get_specialization_display(specialization, lang)
+
+    if not specialization_exists(db, specialization):
+        # If specialization was inferred from symptoms and doesn't exist, provide medical recommendations
+        if suggested_reason:
+            try:
+                recommendations = LLMService.get_medical_recommendation(message, lang)
+                if "error" in recommendations:
+                    print(f"Medical recommendation API error: {recommendations['error']}")
+                    # Fallback to unavailable message
+                    pass
+                else:
+                    if lang == "ar":
+                        reply = f"بناءً على أعراضك، إليك بعض النصائح العامة:\n\n{recommendations.get('general_info', '')}\n\nمتى يجب زيارة الطبيب: {recommendations.get('when_to_see_doctor', '')}\n\nالرعاية الذاتية: {', '.join(recommendations.get('self_care', []))}\n\nعلامات التحذير: {', '.join(recommendations.get('warning_signs', []))}"
+                    else:
+                        reply = f"Based on your symptoms, here are some general recommendations:\n\n{recommendations.get('general_info', '')}\n\nWhen to see a doctor: {recommendations.get('when_to_see_doctor', '')}\n\nSelf-care: {', '.join(recommendations.get('self_care', []))}\n\nWarning signs: {', '.join(recommendations.get('warning_signs', []))}"
+                    
+                    disclaimer = "\n\n⚠️ This is general educational information, not medical advice. Always consult with a healthcare professional."
+                    reply += disclaimer
+                    
+                    return {"reply": reply}
+            except Exception as e:
+                print(f"Medical recommendation error: {e}")
+                # Fallback to unavailable message
+                pass
+        
+        # Default unavailable message
         if lang == "ar":
-            reply = f"بناءً على ما وصفته، أعتقد أنك تحتاج إلى {specialization}. هل تريد المتابعة؟"
+            reply = f"عذراً، لا يوجد لدينا تخصص {specialization_display} حالياً."
         else:
-            reply = f"Based on your symptoms, I suggest seeing a {specialization}. Would you like to proceed?"
+            reply = f"Sorry, we do not have {specialization_display} specialization right now."
+        return {"reply": reply}
+
+    # Check if user explicitly requested booking with a specialty (e.g., "عايز احجز مع دكتور باطنه")
+    explicit_booking_keywords = ["احجز", "موعد", "عايز", "اريد", "أريد", "book", "appointment", "schedule", "reserve"]
+    has_explicit_booking = any(keyword in message.lower() for keyword in explicit_booking_keywords)
+
+    # If user explicitly asked for specialty + booking, skip confirmation and show doctors
+    # Otherwise, ask for confirmation when specialty is only inferred from symptoms
+    if suggested_reason and not has_explicit_booking:
+        if lang == "ar":
+            reply = f"بناءً على ما وصفته، أعتقد أنك تحتاج إلى {specialization_display}. هل تريد المتابعة؟"
+        else:
+            reply = f"Based on your symptoms, I suggest seeing a {specialization_display}. Would you like to proceed?"
         session["state"] = "confirm_specialization"
         session["suggested_specialization"] = specialization
+        session["original_message"] = message
         session["language"] = lang
         SessionService.update(user_id, session)
         return {"reply": reply}
@@ -122,9 +214,9 @@ def handle_start(db, user_id, message, session):
     SessionService.update(user_id, session)
 
     if lang == "ar":
-        reply = "👨‍⚕️ اختر أحد الأطباء:"
+        reply = f"👨‍⚕️ اختر أحد أطباء {specialization_display}:"
     else:
-        reply = "👨‍⚕️ Choose a doctor:"
+        reply = f"👨‍⚕️ Choose a {specialization_display}:"
     
     return {
         "reply": reply,
@@ -139,6 +231,40 @@ def handle_confirm_specialization(db, user_id, message, session):
     
     # Check if user confirms (yes, ok, نعم, حسناً, etc.)
     if message.lower() in ["yes", "ok", "sure", "proceed", "نعم", "حسناً", "تمام", "ايه"]:
+        suggested_spec = normalize_specialization(suggested_spec)
+        suggested_display = get_specialization_display(suggested_spec, lang)
+
+        if not specialization_exists(db, suggested_spec):
+            # Provide medical recommendations since specialization was inferred from symptoms
+            original_message = session.get("original_message", "")
+            try:
+                recommendations = LLMService.get_medical_recommendation(original_message, lang)
+                if "error" in recommendations:
+                    print(f"Medical recommendation API error: {recommendations['error']}")
+                    # Fallback to unavailable message
+                    pass
+                else:
+                    if lang == "ar":
+                        reply = f"بناءً على أعراضك، إليك بعض النصائح العامة:\n\n{recommendations.get('general_info', '')}\n\nمتى يجب زيارة الطبيب: {recommendations.get('when_to_see_doctor', '')}\n\nالرعاية الذاتية: {', '.join(recommendations.get('self_care', []))}\n\nعلامات التحذير: {', '.join(recommendations.get('warning_signs', []))}"
+                    else:
+                        reply = f"Based on your symptoms, here are some general recommendations:\n\n{recommendations.get('general_info', '')}\n\nWhen to see a doctor: {recommendations.get('when_to_see_doctor', '')}\n\nSelf-care: {', '.join(recommendations.get('self_care', []))}\n\nWarning signs: {', '.join(recommendations.get('warning_signs', []))}"
+                    
+                    disclaimer = "\n\n⚠️ This is general educational information, not medical advice. Always consult with a healthcare professional."
+                    reply += disclaimer
+                    
+                    return {"reply": reply}
+            except Exception as e:
+                print(f"Medical recommendation error: {e}")
+                # Fallback to unavailable message
+                pass
+            
+            # Default unavailable message
+            if lang == "ar":
+                reply = f"عذراً، لا يوجد لدينا تخصص {suggested_display} حالياً."
+            else:
+                reply = f"Sorry, we do not have {suggested_display} specialization right now."
+            return {"reply": reply}
+
         doctors = db.query(Doctor).filter(
             Doctor.specialization.ilike(f"%{suggested_spec}%")
         ).all()
@@ -160,10 +286,11 @@ def handle_confirm_specialization(db, user_id, message, session):
         session["doctors"] = doctors_list
         SessionService.update(user_id, session)
         
+        suggested_spec_display = get_specialization_display(suggested_spec, lang)
         if lang == "ar":
-            reply = "👨‍⚕️ اختر أحد الأطباء:"
+            reply = f"👨‍⚕️ اختر أحد أطباء {suggested_spec_display}:"
         else:
-            reply = "👨‍⚕️ Choose a doctor:"
+            reply = f"👨‍⚕️ Choose a {suggested_spec_display}:"
         
         return {
             "reply": reply,
@@ -347,15 +474,15 @@ def handle_collect_phone(db, user_id, message, session):
 
     ensure_booking(session)
     session["booking"]["patient_phone"] = phone
-    session["state"] = "confirm"
+    session["state"] = "collect_email"
 
     SessionService.update(user_id, session)
 
     lang = session.get("language", "en")
     if lang == "ar":
-        reply = f"✅ هل تؤكد الحجز؟ (نعم/لا)"
+        reply = "📧 من فضلك أدخل بريدك الإلكتروني لإرسال تذكير بالموعد:"
     else:
-        reply = f"✅ Confirm booking? (yes/no)"
+        reply = "📧 Please enter your email so we can send a reminder for the appointment:"
     
     return {"reply": reply}
 
@@ -367,8 +494,11 @@ def handle_collect_email(db, user_id, message, session):
     # Basic email validation
     import re
     email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    lang = session.get("language", "en")
     
     if not re.match(email_pattern, email):
+        if lang == "ar":
+            return {"reply": "❌ الرجاء إدخال بريد إلكتروني صحيح:"}
         return {"reply": "❌ Please enter a valid email address:"}
 
     ensure_booking(session)
@@ -378,6 +508,8 @@ def handle_collect_email(db, user_id, message, session):
     SessionService.update(user_id, session)
 
     slot = session["booking"].get("slot")
+    if lang == "ar":
+        return {"reply": f"✅ هل تؤكد الحجز في {slot}؟ (نعم/لا)"}
     return {"reply": f"✅ Confirm booking at {slot}? (yes/no)"}
 
 
@@ -497,31 +629,43 @@ class ChatbotService:
         return any(t in message for t in triggers)
 
 
-    @staticmethod
-    def handle_chat(db, user_id: str, message: str):
+@staticmethod
+def handle_chat(db, user_id: str, message: str):
 
-        session = SessionService.get(user_id)
+    session = SessionService.get_or_create(user_id)
 
-        if not session:
-            session = SessionService.init()
+    session = ensure_session_structure(session)
 
-        session = ensure_session_structure(session)
+    state = session.get("state") or "start"
+    data = session.setdefault("data", {})
+
+    # =========================
+    # 🧠 Extract user info
+    # =========================
+    import re
+
+    if "انثى" in message:
+        data["gender"] = "female"
+    elif "ذكر" in message:
+        data["gender"] = "male"
+
+    age_match = re.search(r'\d+', message)
+    if age_match:
+        data["age"] = int(age_match.group())
+
+    # =========================
+    # 🚨 FIX: SOFT RESET ONLY
+    # =========================
+    if state != "start" and ChatbotService.is_new_request(message):
+        session["state"] = "start"   # ❌ don't wipe data
         SessionService.update(user_id, session)
+        state = "start"
 
-        state = session.get("state") or "start"
-        session.setdefault("data", {})
+    handler = STATE_HANDLERS.get(state, handle_start)
 
-        # ✅ FIXED CALL + SAFE RESET LOGIC
-        if state != "start" and ChatbotService.is_new_request(message):
+    result = handler(db, user_id, message, session)
 
-            session = {
-                "state": "start",
-                "data": {}
-            }
+    # save session after handler
+    SessionService.update(user_id, session)
 
-            SessionService.update(user_id, session)
-            state = "start"
-
-        handler = STATE_HANDLERS.get(state, handle_start)
-
-        return handler(db, user_id, message, session)
+    return result

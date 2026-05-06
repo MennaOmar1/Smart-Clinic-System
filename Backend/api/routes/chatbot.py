@@ -1,97 +1,161 @@
-from fastapi import APIRouter, Request, Depends
+from fastapi import APIRouter, Request, Response, Depends
 from sqlalchemy.orm import Session
 import uuid
+import httpx
+import asyncio
+
 from core.database import get_db
 from services.chatbot_service import ChatbotService
 from services.llm_service import LLMService
+from services.session_service import SessionService
 from schemas.chatbot import ChatRequest
+
 router = APIRouter(tags=["Chatbot"])
 
+RAG_URL = "https://aversion-cradling-empirical.ngrok-free.dev/chat"
 
 
+# =========================
+# 🔁 RAG CALL WITH RETRY
+# =========================
+async def call_rag(payload):
+    retries = 3
+    timeout = 60.0
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for attempt in range(retries):
+            try:
+                response = await client.post(RAG_URL, json=payload)
+                response.raise_for_status()
+                return response.json()
+
+            except (httpx.ReadTimeout, httpx.ConnectError) as e:
+                print(f"RAG ERROR (attempt {attempt+1}): {e}")
+
+            except Exception as e:
+                print(f"RAG UNKNOWN ERROR: {e}")
+                break
+
+            await asyncio.sleep(1)
+
+    return None
+
+
+# =========================
+# 💬 MAIN CHAT
+# =========================
 @router.post("/")
-async def chat(payload: ChatRequest, db: Session = Depends(get_db)):
-
+async def chat(
+    request: Request,
+    response: Response,
+    payload: ChatRequest,
+    db: Session = Depends(get_db)
+):
     try:
-<<<<<<< HEAD
-        message = payload.message
-        user_id = payload.user_id
+        message = payload.message.strip()
+        user_id = payload.user_id or request.cookies.get("chatbot_user_id") or str(uuid.uuid4())
 
-        result = ChatbotService.handle_chat(db, user_id, message)
+        # =========================
+        # 🧠 SESSION INIT
+        # =========================
+        session = SessionService.get_or_create(user_id)
 
-        return result
+        if "history" not in session:
+            session["history"] = []
+
+        if "state" not in session:
+            session["state"] = "start"
+
+        history = session["history"]
+
+        # =========================
+        # 🧹 RESET COMMAND (IMPORTANT)
+        # =========================
+        if message.lower() in ["reset", "restart", "start over", "new"]:
+            session["history"] = []
+            session["state"] = "start"
+            SessionService.update(user_id, session)
+
+            return {
+                "user_id": user_id,
+                "reply": "Session restarted. You can start again.",
+                "data": None
+            }
+
+        # =========================
+        # 🧠 LIMIT HISTORY (IMPORTANT)
+        # =========================
+        history = history[-6:]   # نخليها قصيرة عشان Gemini يركز
+
+        # =========================
+        # 🧠 ADD USER MESSAGE
+        # =========================
+        history.append({
+            "role": "user",
+            "content": message
+        })
+
+        # =========================
+        # 🧠 FORCE RAG IF MEDICAL
+        # =========================
+        decision = LLMService.process_message(message)
+
+        if decision["action"] == "rag_api":
+            session["state"] = "rag"
+
+        # =========================
+        # 🧠 RAG FLOW
+        # =========================
+        if session["state"] == "rag":
+
+            rag_data = await call_rag({
+                "message": message,
+                "history": history
+            })
+
+            if not rag_data:
+                result = {
+                    "reply": "Medical service is slow, but I’ll try to help.",
+                    "data": None
+                }
+            else:
+                result = {
+                    "reply": "Medical assessment:",
+                    "data": rag_data["response"]   # FIX IMPORTANT
+                }
+
+        # =========================
+        # 🧠 NORMAL FLOW
+        # =========================
+        else:
+            result = ChatbotService.handle_chat(db, user_id, message)
+
+        # =========================
+        # 🧠 SAVE RESPONSE
+        # =========================
+        history.append({
+            "role": "assistant",
+            "content": result.get("data") or result.get("reply", "")
+        })
+
+        session["history"] = history
+        SessionService.update(user_id, session)
+
+        # =========================
+        # 🍪 COOKIE
+        # =========================
+        response.set_cookie(
+            key="chatbot_user_id",
+            value=user_id,
+            httponly=True,
+            max_age=60 * 60 * 24 * 7
+        )
+
+        return {
+            "user_id": user_id,
+            **result
+        }
 
     except Exception as e:
         print("CHATBOT ERROR:", str(e))
         return {"error": str(e)}
-
-=======
-        data = await request.json()
-    except Exception as e:
-        return {"error": f"Invalid JSON: {str(e)}"}
-    
-    message = data.get("message")
-    user_id = data.get("user_id") or str(uuid.uuid4())
->>>>>>> 9b23da4 ( changes)
-
-    if not message:
-        return {"error": "Message is required"}
-    
-    try:
-        result = ChatbotService.handle_chat(db, str(user_id), str(message))
-        print(f"✓ Chatbot response for user {user_id}: {result.get('reply')}")
-        return {"user_id": user_id, **result}
-    except Exception as e:
-        print(f"✗ Chatbot error for user {user_id}: {e}")
-        return {"error": f"Chatbot error: {str(e)}"}
-
-
-# LLM INTENT EXTRACTION ENDPOINT
-@router.post("/intent")
-async def extract_intent(request: Request):
-    """Extract user intent using LLM"""
-
-    try:
-        data = await request.json()
-    except Exception as e:
-        return {"error": f"Invalid JSON: {str(e)}"}
-    
-    message = data.get("message")
-
-    if not message:
-        return {"error": "Message is required"}
-
-    try:
-        intent_data = LLMService.extract_intent(str(message))
-        print(f"✓ Intent extracted: {intent_data.get('intent')}")
-        return intent_data
-    except Exception as e:
-        print(f"✗ Intent extraction error: {e}")
-        return {"error": f"Failed to extract intent: {str(e)}"}
-
-
-# MEDICAL RECOMMENDATIONS ENDPOINT
-@router.post("/recommendation")
-async def get_medical_recommendation(request: Request):
-    """Get medical recommendations based on symptoms using LLM"""
-
-    try:
-        data = await request.json()
-    except Exception as e:
-        return {"error": f"Invalid JSON: {str(e)}"}
-    
-    symptoms = data.get("symptoms")
-
-    if not symptoms:
-        return {"error": "Symptoms are required"}
-
-    try:
-        recommendation = LLMService.get_medical_recommendation(str(symptoms))
-        print(f"✓ Medical recommendation generated")
-        return {
-            "disclaimer": "⚠️ This is general educational information, not medical advice. Always consult with a healthcare professional.",
-            **recommendation
-        }
-    except Exception as e:
-        print(f"✗ Recommendation error: {e}")
-        return {"error": f"Failed to generate recommendation: {str(e)}"}

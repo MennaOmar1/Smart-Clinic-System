@@ -7,6 +7,11 @@ class SessionService:
     def init():
         return {
             "state": "start",
+            "data": {
+                "age": None,
+                "gender": None
+            },
+            "history": [],
             "booking": {
                 "doctor_id": None,
                 "specialization": None,

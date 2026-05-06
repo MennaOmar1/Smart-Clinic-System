@@ -38,6 +38,26 @@ def get_my_appointments(
     return appointments
 
 
+@router.get("/appointments/{appointment_id}/status", response_model=AppointmentResponse)
+def get_appointment_status(
+    appointment_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(["doctor"]))
+):
+    user_id = int(user.get("sub"))
+    doctor = db.query(Doctor).filter(Doctor.user_id == user_id).first()
+
+    if not doctor:
+        raise HTTPException(404, "Doctor not found")
+
+    appointment = AppointmentService.get_by_id(db, appointment_id)
+
+    if not appointment or appointment.doctor_id != doctor.id:
+        raise HTTPException(404, "Appointment not found")
+
+    return appointment
+
+
 @router.patch("/appointments/{appointment_id}/status", response_model=AppointmentResponse)
 def update_status(
     appointment_id: int,
