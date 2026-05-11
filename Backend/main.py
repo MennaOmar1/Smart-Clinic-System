@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from starlette.middleware.sessions import SessionMiddleware
 from api.routes import (
     auth, google_auth, admin, appointments,
-    protected, doctor, auth_refresh, chatbot
+    protected, doctor, auth_refresh, chatbot, elevenlabs
 )
 from core.database import Base, engine
 from core.scheduler import send_reminders
@@ -56,6 +56,7 @@ app.include_router(protected.router)
 app.include_router(doctor.router, prefix="/doctor")
 app.include_router(auth_refresh.router)
 app.include_router(chatbot.router, prefix="/chatbot")
+app.include_router(elevenlabs.router)
 
 # =========================
 # HOME
