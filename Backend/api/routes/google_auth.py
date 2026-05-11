@@ -16,7 +16,7 @@ router = APIRouter(prefix="/google", tags=["Google Auth"])
 @router.get("/login")
 async def login(request: Request):
     redirect_uri = os.getenv("GOOGLE_CALLBACK_URL", "http://127.0.0.1:8000/auth/google/callback")
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+    return await oauth.google.authorize_redirect(request, redirect_uri, access_type="offline", prompt="consent")
 
 
 @router.get("/callback")
@@ -61,6 +61,14 @@ async def auth_callback(request: Request, db: Session = Depends(get_db)):
         db.add(user)
         db.commit()
         db.refresh(user)
+
+    import json
+    from models.db_models import Doctor
+    if user.role == "doctor":
+        doctor = db.query(Doctor).filter(Doctor.user_id == user.id).first()
+        if doctor:
+            doctor.google_token = json.dumps(token)
+            db.commit()
 
     access_token = create_access_token({
         "sub": str(user.id),
