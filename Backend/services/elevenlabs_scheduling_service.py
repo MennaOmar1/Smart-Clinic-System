@@ -8,6 +8,7 @@ from core.elevenlabs_config import (
     ELEVENLABS_TIMEZONE,
 )
 from models.db_models import Appointment, Doctor, Patient
+from services.calendar_sync_service import CalendarSyncService
 
 
 CAIRO_TZ = ZoneInfo(ELEVENLABS_TIMEZONE)
@@ -121,6 +122,19 @@ class ElevenLabsSchedulingService:
         db.commit()
         db.refresh(appointment)
 
+        # Google sync
+        doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+        if doctor and doctor.google_token:
+            import json
+            try:
+                google_creds = json.loads(doctor.google_token)
+                google_event_id = CalendarSyncService.create(appointment, google_creds)
+                if google_event_id:
+                    appointment.google_event_id = google_event_id
+                    db.commit()
+            except Exception:
+                pass
+
         confirmation = (
             f"Appointment confirmed for {start_time.strftime('%Y-%m-%d %H:%M')} "
             f"{ELEVENLABS_TIMEZONE}"
@@ -195,7 +209,8 @@ class ElevenLabsSchedulingService:
 
     @staticmethod
     def _to_db_time(value: datetime) -> datetime:
-        return ElevenLabsSchedulingService.normalize_to_cairo(value).replace(tzinfo=None)
+        from datetime import timezone
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
 
     @staticmethod
     def _status_for_error(error_code: str | None) -> int:
