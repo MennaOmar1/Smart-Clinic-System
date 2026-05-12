@@ -33,7 +33,7 @@ def calculate_end_time(start_time: str, duration_minutes: int = 30):
 
 
 # Create Event
-def create_event(service, summary, start_time, duration=30, attendee_email: str | None = None):
+def create_event(service, summary, start_time, duration=30, attendee_emails: list[str] | None = None):
     end_time = calculate_end_time(start_time, duration)
 
     event = {
@@ -56,8 +56,8 @@ def create_event(service, summary, start_time, duration=30, attendee_email: str 
         }
     }
 
-    if attendee_email:
-        event["attendees"] = [{"email": attendee_email}]
+    if attendee_emails:
+        event["attendees"] = [{"email": email} for email in attendee_emails]
 
     created_event = service.events().insert(
         calendarId=os.getenv("GOOGLE_CALENDAR_ID", "primary"),
