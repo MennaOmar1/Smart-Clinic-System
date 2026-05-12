@@ -45,33 +45,33 @@ def seed():
 
     admin = User(
         email="drmagdyfahmi9@gmail.com",
-        password=hash_password("admin123"),
+        password=hash_password("Magdy@1950"),
         role="admin",
         name="Admin User",
         is_active=True
     )
 
     doctor_user1 = User(
-        email="mennaeb743@gmail.com",
-        password=hash_password("doctor1"),
+        email="dr.ahmed.hassan157@gmail.com",
+        password=hash_password("Ahmed_doctor123"),
         role="doctor",
         name="Dr. Ahmed Hassan",
         is_active=True
     )
 
     doctor_user2 = User(
-        email="omarmenna041@gmail.com",
-        password=hash_password("doctor2"),
+        email="dr.sara.ali153@gmail.com",
+        password=hash_password("Sara_doctor123"),
         role="doctor",
         name="Dr. Sara Ali",
         is_active=True
     )
     
     doctor_user3 = User(
-        email="dr.khalid.mahmoud@gmail.com",
-        password=hash_password("doctor3"),
+        email="dr.hamza.mahmoud12@gmail.com",
+        password=hash_password("Hamza_doctor123"),
         role="doctor",
-        name="Dr. Khalid Mahmoud",
+        name="Dr. Hamza Mahmoud",
         is_active=True
     )
 
