@@ -1,0 +1,36 @@
+{
+  "type": "webhook",
+  "name": "List_Doctors",
+  "description": "Retrieve the list of all available doctors and their specialties from the clinic scheduling system. Call this tool at the start of a conversation or when the user asks which doctors are available. Returns an array of doctors with their ID, name, and specialty.",
+  "disable_interruptions": false,
+  "force_pre_tool_speech": "auto",
+  "assignments": [
+    {
+      "source": "response",
+      "dynamic_variable": "doctors_list",
+      "value_path": "doctors"
+    }
+  ],
+  "tool_call_sound": null,
+  "tool_call_sound_behavior": "auto",
+  "execution_mode": "immediate",
+  "api_schema": {
+    "url": "https://smart-clinic-system-production.up.railway.app/elevenlabs/doctors",
+    "method": "GET",
+    "path_params_schema": [],
+    "query_params_schema": [],
+    "request_body_schema": null,
+    "request_headers": [
+      {
+        "type": "value",
+        "name": "Content-Type",
+        "value": "application/json"
+      }
+    ],
+    "auth_connection": null
+  },
+  "response_timeout_secs": 10,
+  "dynamic_variables": {
+    "dynamic_variable_placeholders": {}
+  }
+}

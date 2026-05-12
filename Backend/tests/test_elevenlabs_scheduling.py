@@ -1,7 +1,7 @@
+import unittest
 import os
 import sys
 import types
-import unittest
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -107,14 +107,19 @@ class ElevenLabsSchedulingServiceTests(unittest.TestCase):
 
 class ElevenLabsRouteValidationTests(unittest.TestCase):
     def setUp(self):
+        os.environ["ELEVENLABS_SERVICE_TOKEN"] = "test-token"
         self.app = FastAPI()
         self.app.include_router(elevenlabs_routes.router)
         self.app.dependency_overrides[elevenlabs_routes.get_db] = lambda: None
         self.client = TestClient(self.app)
 
+    def tearDown(self):
+        os.environ.pop("ELEVENLABS_SERVICE_TOKEN", None)
+
     def test_booking_validation_error_keeps_elevenlabs_mapping_paths(self):
         response = self.client.post(
             "/elevenlabs/book",
+            headers={"X-ElevenLabs-Service-Token": "test-token"},
             json={
                 "doctor_id": 1,
                 "patient_name": "A",
@@ -131,7 +136,10 @@ class ElevenLabsRouteValidationTests(unittest.TestCase):
         self.assertEqual(body["error_code"], "VALIDATION_ERROR")
 
     def test_missing_booking_body_keeps_elevenlabs_mapping_paths(self):
-        response = self.client.post("/elevenlabs/book")
+        response = self.client.post(
+            "/elevenlabs/book",
+            headers={"X-ElevenLabs-Service-Token": "test-token"},
+        )
 
         self.assertEqual(response.status_code, 422)
         body = response.json()
@@ -141,6 +149,7 @@ class ElevenLabsRouteValidationTests(unittest.TestCase):
     def test_availability_validation_error_keeps_elevenlabs_mapping_paths(self):
         response = self.client.get(
             "/elevenlabs/availability",
+            headers={"X-ElevenLabs-Service-Token": "test-token"},
             params={"doctor_id": "x", "time": "not-a-date"},
         )
 

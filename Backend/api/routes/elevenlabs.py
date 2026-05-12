@@ -120,6 +120,7 @@ def list_doctors(db: Session = Depends(get_db)):
             }
             for doctor in doctors
         ],
+        "message": "Doctors loaded",
     }
 
 

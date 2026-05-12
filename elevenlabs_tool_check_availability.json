@@ -1,0 +1,64 @@
+{
+  "type": "webhook",
+  "name": "Check_Availability",
+  "description": "Check if a specific doctor is available at a given date and time. Must be called BEFORE booking any appointment. Requires doctor_id (from List_Doctors) and time in ISO 8601 format. The backend validates timezone (Africa/Cairo), working hours (08:00-17:00 Mon-Fri), future dates only, and 30-minute slot alignment.",
+  "disable_interruptions": true,
+  "force_pre_tool_speech": "auto",
+  "assignments": [
+    {
+      "source": "response",
+      "dynamic_variable": "is_available",
+      "value_path": "is_available"
+    },
+    {
+      "source": "response",
+      "dynamic_variable": "availability_message",
+      "value_path": "availability_message"
+    }
+  ],
+  "tool_call_sound": null,
+  "tool_call_sound_behavior": "auto",
+  "execution_mode": "immediate",
+  "api_schema": {
+    "url": "https://smart-clinic-system-production.up.railway.app/elevenlabs/availability",
+    "method": "GET",
+    "path_params_schema": [],
+    "query_params_schema": [
+      {
+        "id": "doctor_id",
+        "type": "string",
+        "value_type": "llm_prompt",
+        "description": "The numeric doctor ID (e.g. 1, 2, 3). Obtain this from the List_Doctors tool response.",
+        "dynamic_variable": "",
+        "constant_value": "",
+        "enum": null,
+        "is_system_provided": false,
+        "required": true
+      },
+      {
+        "id": "time",
+        "type": "string",
+        "value_type": "llm_prompt",
+        "description": "Requested appointment date and time in ISO 8601 format (e.g. 2026-05-12T10:00:00). Must be a future weekday between 08:00-17:00 Africa/Cairo timezone. Minutes must be :00 or :30 only.",
+        "dynamic_variable": "",
+        "constant_value": "",
+        "enum": null,
+        "is_system_provided": false,
+        "required": true
+      }
+    ],
+    "request_body_schema": null,
+    "request_headers": [
+      {
+        "type": "value",
+        "name": "Content-Type",
+        "value": "application/json"
+      }
+    ],
+    "auth_connection": null
+  },
+  "response_timeout_secs": 10,
+  "dynamic_variables": {
+    "dynamic_variable_placeholders": {}
+  }
+}

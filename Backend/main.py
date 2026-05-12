@@ -13,7 +13,6 @@ from api.routes import (
 from core.database import Base, engine
 from core.scheduler import send_reminders
 from apscheduler.schedulers.background import BackgroundScheduler
-from scripts.auto_seed import auto_seed_if_empty
 import logging
 from core.database import Base, engine
 
@@ -37,7 +36,6 @@ def startup_db():
     try:
         Base.metadata.create_all(bind=engine)
         print("✅ Database connected & tables created")
-        auto_seed_if_empty()
     except Exception as e:
         print("❌ Database connection failed:", e)
 
