@@ -2,7 +2,6 @@ from datetime import datetime
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 
-
 # ================================
 # CREATE APPOINTMENT
 # ================================
@@ -56,13 +55,28 @@ class AdminUpdateAppointment(BaseModel):
 # RESPONSE MODEL (IMPORTANT)
 # ================================
 class AppointmentResponse(BaseModel):
+
     id: int
+
     doctor_id: int
+    doctor_name: str | None = None
+    doctor_email: str | None = None
+
     patient_id: int
+    patient_name: str | None = None
+    patient_phone: str | None = None
+    patient_email: str | None = None
+
     start_time: datetime
     end_time: datetime
+
     status: str
-    notes: Optional[str]
+    notes: str | None = None
+
+    google_event_id: str | None = None
+
+    reminder_time: datetime | None = None
+    reminder_sent: bool | None = None
 
     class Config:
         from_attributes = True

@@ -16,41 +16,109 @@ class AppointmentService:
     # =========================
     @staticmethod
     def enrich_appointment(appt: Appointment):
+
         if not appt:
             return None
 
+        doctor_user = appt.doctor.user if appt.doctor else None
+        patient = appt.patient
+
         return {
             "id": appt.id,
+
+            # =========================
+            # DOCTOR
+            # =========================
             "doctor_id": appt.doctor_id,
-            "doctor_name": appt.doctor.user.name if appt.doctor and appt.doctor.user else None,
+            "doctor_name": doctor_user.name if doctor_user else None,
+            "doctor_email": doctor_user.email if doctor_user else None,
 
+            # =========================
+            # PATIENT
+            # =========================
             "patient_id": appt.patient_id,
-            "patient_name": appt.patient.name if appt.patient else None,
+            "patient_name": patient.name if patient else None,
+            "patient_phone": patient.phone if patient else None,
+            "patient_email": patient.email if patient else None,
 
+            # =========================
+            # APPOINTMENT
+            # =========================
             "start_time": appt.start_time,
             "end_time": appt.end_time,
             "status": appt.status,
             "notes": appt.notes,
-            "google_event_id": appt.google_event_id,
-            "reminder_time": appt.reminder_time
-        }
 
+            # =========================
+            # GOOGLE
+            # =========================
+            "google_event_id": appt.google_event_id,
+
+            # =========================
+            # REMINDER
+            # =========================
+            "reminder_time": appt.reminder_time,
+            "reminder_sent": appt.reminder_sent,
+        }
     # =========================
     # PATIENT
     # =========================
     @staticmethod
     def get_or_create_patient(db: Session, name, phone, email=None):
-        patient = db.query(Patient).filter(Patient.phone == phone).first()
 
+    # =========================
+    # PRODUCTION LOGIC
+    # Priority:
+    # 1) email (most unique)
+    # 2) phone
+    # =========================
+
+        patient = None
+
+        # Search by email first
+        if email:
+            patient = db.query(Patient).filter(
+                Patient.email == email
+            ).first()
+
+        # If not found → search by phone
         if not patient:
-            patient = Patient(name=name, phone=phone, email=email)
+            patient = db.query(Patient).filter(
+                Patient.phone == phone
+            ).first()
+
+    # =========================
+    # CREATE NEW PATIENT
+    # =========================
+        if not patient:
+            patient = Patient(
+                name=name,
+                phone=phone,
+                email=email
+            )
+
             db.add(patient)
             db.commit()
             db.refresh(patient)
 
-        elif email and not patient.email:
-            patient.email = email
+        # =========================
+        # UPDATE EXISTING DATA
+        # =========================
+        else:
+
+            # always keep latest name
+            patient.name = name
+
+            # update phone if changed
+            if phone and patient.phone != phone:
+                patient.phone = phone
+
+            # update email if changed
+            if email and patient.email != email:
+                patient.email = email
+
             db.commit()
+            db.refresh(patient)
 
         return patient
 
@@ -198,7 +266,13 @@ class AppointmentService:
                 db.commit()
                 db.refresh(appointment)
         print("GOOGLE CREDS RECEIVED:", credentials)
-        return appointment
+        db.refresh(appointment)
+
+        # LOAD RELATIONSHIPS
+        appointment.patient
+        appointment.doctor
+
+        return AppointmentService.enrich_appointment(appointment)
 
     # =========================
     # GET ALL (ENRICHED)
@@ -274,15 +348,38 @@ class AppointmentService:
     # CHATBOT BOOKING (FIXED)
     # =========================
     @staticmethod
-    def book_from_chatbot(db, doctor_id, start_time, patient_name, patient_phone):
+    def book_from_chatbot(
+        db: Session,
+        doctor_id: int,
+        start_time: str,
+        patient_name: str,
+        patient_phone: str,
+        patient_email: str | None = None,
+        notes: str | None = None
+    ):
 
         start_time = datetime.fromisoformat(start_time)
+        start_time = start_time.replace(second=0, microsecond=0)
 
-        if not AppointmentService.is_available(db, doctor_id, start_time):
+        doctor = db.query(Doctor).filter(
+            Doctor.id == doctor_id
+        ).first()
+
+        if not doctor:
+            raise Exception("Doctor not found")
+
+        if not AppointmentService.is_available(
+            db,
+            doctor_id,
+            start_time
+        ):
             raise Exception("Slot not available")
 
         patient = AppointmentService.get_or_create_patient(
-            db, patient_name, patient_phone
+            db,
+            patient_name,
+            patient_phone,
+            patient_email
         )
 
         appointment = Appointment(
@@ -291,6 +388,7 @@ class AppointmentService:
             start_time=start_time,
             end_time=start_time + timedelta(minutes=30),
             status="SCHEDULED",
+            notes=notes,
             reminder_time=start_time - timedelta(hours=1)
         )
 
@@ -298,8 +396,37 @@ class AppointmentService:
         db.commit()
         db.refresh(appointment)
 
-        return AppointmentService.enrich_appointment(appointment)
+        # =========================
+        # GOOGLE CALENDAR SYNC
+        # =========================
 
+        google_creds = None
+
+        if doctor.google_token:
+            try:
+                google_creds = json.loads(doctor.google_token)
+            except:
+                google_creds = None
+
+        if google_creds:
+
+            google_event_id = CalendarSyncService.create(
+                appointment,
+                google_creds
+            )
+
+            if google_event_id:
+                appointment.google_event_id = google_event_id
+                db.commit()
+                db.refresh(appointment)
+
+        # load relationships
+        appointment.patient
+        appointment.doctor
+
+        return AppointmentService.enrich_appointment(
+            appointment
+        )
     # =========================
     # UPDATE STATUS
     # =========================
