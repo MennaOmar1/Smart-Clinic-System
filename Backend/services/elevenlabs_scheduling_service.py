@@ -209,8 +209,7 @@ class ElevenLabsSchedulingService:
 
     @staticmethod
     def _to_db_time(value: datetime) -> datetime:
-        from datetime import timezone
-        return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return ElevenLabsSchedulingService.normalize_to_cairo(value).replace(tzinfo=None)
 
     @staticmethod
     def _status_for_error(error_code: str | None) -> int:
