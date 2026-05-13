@@ -21,11 +21,16 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 
-SESSION_SECRET_KEY = os.getenv("SESSION_SECRET_KEY", "supersecretkey123456")
+SESSION_SECRET_KEY = os.getenv(
+    "SESSION_SECRET_KEY",
+    "supersecretkey123456"
+)
 
 app.add_middleware(
     SessionMiddleware,
-    secret_key=SESSION_SECRET_KEY
+    secret_key=SESSION_SECRET_KEY,
+    same_site="lax",
+    https_only=False
 )
 
 # =========================
@@ -47,9 +52,12 @@ with engine.connect() as conn:
     ))
     conn.commit()
 
+from api.routes.google_auth import router as google_router
+
+app.include_router(google_router)
 
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
-app.include_router(google_auth.router, prefix="/auth", tags=["Google Auth"])
+#app.include_router(google_auth.router, prefix="/auth", tags=["Google Auth"])
 app.include_router(appointments.router, prefix="/appointments", tags=["Appointments"])
 app.include_router(admin.router, prefix="/admin", tags=["Admin"])
 app.include_router(protected.router)

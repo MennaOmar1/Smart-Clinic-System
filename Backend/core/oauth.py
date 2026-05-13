@@ -1,22 +1,31 @@
 from authlib.integrations.starlette_client import OAuth
 import os
 from dotenv import load_dotenv
+
 load_dotenv()
-# Create OAuth ONCE and attach to app
+
 oauth = OAuth()
 
 oauth.register(
     name="google",
+
     client_id=os.getenv("GOOGLE_CLIENT_ID"),
     client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs={"scope": "openid email profile"},
-    client_auth_method="client_secret_post",
-    timeout=10.0
+
+    access_token_url="https://oauth2.googleapis.com/token",
+    authorize_url="https://accounts.google.com/o/oauth2/auth",
+
+    api_base_url="https://www.googleapis.com/oauth2/v1/",
+
+    client_kwargs={
+        "scope": (
+            "email "
+            "profile "
+            "https://www.googleapis.com/auth/calendar "
+            "https://www.googleapis.com/auth/gmail.send"
+        )
+    },
+
+    access_type="offline",
+    prompt="consent",
 )
-
-# Temporarily disabled OAuth print statements
-# print("CLIENT ID:", os.getenv("GOOGLE_CLIENT_ID"))
-# print("CLIENT SECRET:", os.getenv("GOOGLE_CLIENT_SECRET"))
-
-

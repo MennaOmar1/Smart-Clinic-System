@@ -1,67 +1,155 @@
 import logging
 import os
+import json
+
 from fastapi import APIRouter, Request, HTTPException, Depends
 from authlib.integrations.base_client.errors import OAuthError
 from core.oauth import oauth
 from core.security import create_access_token
 from sqlalchemy.orm import Session
+
 from core.database import get_db
-from models.db_models import User
+from models.db_models import User, Doctor
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/google", tags=["Google Auth"])
+router = APIRouter(prefix="/auth/google", tags=["Google Auth"])
 
 
+# =========================
+# LOGIN
+# =========================
 @router.get("/login")
 async def login(request: Request):
-    redirect_uri = os.getenv("GOOGLE_CALLBACK_URL", "http://127.0.0.1:8000/auth/google/callback")
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+
+    redirect_uri = os.getenv(
+        "GOOGLE_CALLBACK_URL",
+        "http://127.0.0.1:8000/auth/google/callback"
+    )
+
+    return await oauth.google.authorize_redirect(
+        request,
+        redirect_uri,
+        access_type="offline",
+        prompt="consent"
+    )
 
 
+# =========================
+# CALLBACK
+# =========================
 @router.get("/callback")
-async def auth_callback(request: Request, db: Session = Depends(get_db)):
+async def auth_callback(
+    request: Request,
+    db: Session = Depends(get_db)
+):
+
+    print("REQUEST APP:", request.app)
+    print("COOKIE HEADER:", request.headers.get("cookie"))
+    print("SESSION:", dict(request.session))
+
     try:
-        token = await oauth.google.authorize_access_token(request)
+
+        # 🔥 GET TOKEN
+        token = await oauth.google.authorize_access_token(
+            request,
+            claims_options={}
+        )
+
+        print("TOKEN RECEIVED:", token)
+
+        # 🔥 GET USER INFO MANUALLY
+        resp = await oauth.google.get(
+            "userinfo",
+            token=token
+        )
+
+        user_info = resp.json()
+
+        print("USER INFO:", user_info)
+
     except OAuthError as err:
-        error_code = getattr(err, 'error', 'oauth_error')
-        error_description = getattr(err, 'description', str(err))
-        error_uri = getattr(err, 'error_uri', None)
+
+        error_code = getattr(err, "error", "oauth_error")
+        error_description = getattr(err, "description", str(err))
+        error_uri = getattr(err, "error_uri", None)
+
         logger.error(
-            "Google OAuth callback failed: %s %s %s",
+            "Google OAuth failed: %s %s %s",
             error_code,
             error_description,
             error_uri
         )
+
         detail = f"Google OAuth error: {error_code} - {error_description}"
+
         if error_uri:
-            detail += f" (see {error_uri})"
+            detail += f" ({error_uri})"
+
         raise HTTPException(status_code=400, detail=detail)
-    except Exception as err:
-        logger.exception("Unexpected error in Google OAuth callback")
-        raise HTTPException(status_code=500, detail="Unexpected Google OAuth callback error")
 
-    user_info = token.get("userinfo")
+    except Exception as e:
 
-    if not user_info:
-        raise HTTPException(400, "Google auth failed")
+        logger.exception("Unexpected Google OAuth error")
 
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+    # =========================
+    # USER
+    # =========================
     email = user_info["email"]
 
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter(
+        User.email == email
+    ).first()
 
-    # 🔥 FIX: default role = receptionist BUT controlled
     if not user:
+
         user = User(
             email=email,
             name=user_info.get("name"),
-            role="receptionist",  # later we control this via admin
+            role="receptionist",
             is_active=True
         )
+
         db.add(user)
         db.commit()
         db.refresh(user)
 
+    # =========================
+    # SAVE GOOGLE TOKEN
+    # =========================
+    google_token_data = {
+        "access_token": token.get("access_token"),
+        "refresh_token": token.get("refresh_token"),
+        "token_type": token.get("token_type"),
+        "scope": token.get("scope")
+    }
+
+    doctor = db.query(Doctor).filter(
+        Doctor.user_id == user.id
+    ).first()
+
+    if doctor:
+
+        doctor.google_token = json.dumps(
+            google_token_data
+        )
+
+        db.commit()
+
+        print("✅ GOOGLE TOKEN SAVED FOR DOCTOR:", doctor.id)
+
+    else:
+
+        print("⚠️ NO DOCTOR LINKED TO THIS USER")
+
+    # =========================
+    # APP JWT
+    # =========================
     access_token = create_access_token({
         "sub": str(user.id),
         "role": user.role,

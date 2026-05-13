@@ -17,20 +17,20 @@ class CalendarSyncService:
         try:
             service = get_calendar_service(google_token)
 
-            import os
-            admin_email = os.getenv("ADMIN_EMAIL", "drmagdyfahmi9@gmail.com")
-            attendees = [admin_email]
-            
-            if appointment.patient and appointment.patient.email:
-                attendees.append(appointment.patient.email)
-
-            doctor_name = appointment.doctor.user.name if appointment.doctor and appointment.doctor.user else appointment.doctor_id
+            doctor_name = appointment.doctor.user.name
+            patient_name = appointment.patient.name
 
             event_id = create_event(
-                service,
-                summary=f"Appointment - {doctor_name}",
+                service=service,
+                summary=f"Appointment - Dr {doctor_name} with {patient_name}",
                 start_time=appointment.start_time.isoformat(),
-                attendee_emails=attendees
+                end_time=appointment.end_time.isoformat(),
+                description=f"""
+Patient: {patient_name}
+Doctor: {doctor_name}
+Status: {appointment.status}
+""",
+                attendee_email=appointment.patient.email
             )
 
             return event_id
@@ -68,7 +68,10 @@ class CalendarSyncService:
         try:
             service = get_calendar_service(google_token)
 
-            delete_event(service, appointment.google_event_id)
+            delete_event(
+                service,
+                appointment.google_event_id
+            )
 
         except Exception as e:
             print("Google delete failed:", e)

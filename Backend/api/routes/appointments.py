@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
 
 from core.database import get_db
+from models.db_models import Doctor
 from services.appointment_service import AppointmentService
 from schemas.appointment import (
     AppointmentCreate,
@@ -24,8 +25,23 @@ def create_appointment(
     user=Depends(require_roles(["admin", "receptionist"]))
 ):
     try:
-        credentials = None  # default safe
+        # 🔥 1. get doctor
+        doctor = db.query(Doctor).filter(Doctor.id == data.doctor_id).first()
 
+        if not doctor:
+            raise HTTPException(status_code=404, detail="Doctor not found")
+
+        # 🔥 2. parse google token
+        credentials = None
+
+        if doctor.google_token:
+            import json
+            try:
+                credentials = json.loads(doctor.google_token)
+            except:
+                credentials = None
+        print("DOCTOR TOKEN RAW:", doctor.google_token)
+        # 🔥 3. call service WITH credentials
         return AppointmentService.book_appointment(
             db=db,
             doctor_id=data.doctor_id,
@@ -34,7 +50,7 @@ def create_appointment(
             patient_phone=data.patient_phone,
             patient_email=data.patient_email,
             notes=data.notes,
-            credentials=credentials  # PASS IT
+            credentials=credentials   # ✔️ NOW IT WORKS
         )
 
     except Exception as e:

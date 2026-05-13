@@ -4,6 +4,10 @@ from googleapiclient.discovery import build
 from datetime import datetime, timedelta
 
 
+# ----------------------------
+# Credentials
+# ----------------------------
+
 def build_google_credentials(token: dict):
     if not token:
         raise ValueError("Google credentials token is required")
@@ -17,35 +21,43 @@ def build_google_credentials(token: dict):
     )
 
 
-# Create Calendar Service
 def get_calendar_service(token: dict):
     creds = build_google_credentials(token)
     return build("calendar", "v3", credentials=creds)
 
 
+# ----------------------------
+# Time helpers
+# ----------------------------
 
-# Helper: calculate end time
 def calculate_end_time(start_time: str, duration_minutes: int = 30):
     start_dt = datetime.fromisoformat(start_time)
     end_dt = start_dt + timedelta(minutes=duration_minutes)
     return end_dt.isoformat()
 
 
-
+# ----------------------------
 # Create Event
-def create_event(service, summary, start_time, duration=30, attendee_emails: list[str] | None = None):
-    end_time = calculate_end_time(start_time, duration)
+# ----------------------------
 
+def create_event(
+    service,
+    summary,
+    start_time,
+    end_time,
+    description="",
+    attendee_email: str | None = None
+):
     event = {
         "summary": summary,
-        "description": "Clinic appointment",
+        "description": description,
         "start": {
             "dateTime": start_time,
-            "timeZone": "UTC"
+            "timeZone": "Africa/Cairo"
         },
         "end": {
             "dateTime": end_time,
-            "timeZone": "UTC"
+            "timeZone": "Africa/Cairo"
         },
         "reminders": {
             "useDefault": False,
@@ -56,8 +68,9 @@ def create_event(service, summary, start_time, duration=30, attendee_emails: lis
         }
     }
 
-    if attendee_emails:
-        event["attendees"] = [{"email": email} for email in attendee_emails]
+    # 🔥 FIX: attendees must be list of emails, not looped incorrectly
+    if attendee_email:
+        event["attendees"] = [{"email": attendee_email}]
 
     created_event = service.events().insert(
         calendarId=os.getenv("GOOGLE_CALENDAR_ID", "primary"),
@@ -68,30 +81,37 @@ def create_event(service, summary, start_time, duration=30, attendee_emails: lis
     return created_event["id"]
 
 
-
+# ----------------------------
 # Update Event
-def update_event(service, event_id, new_start_time, duration=30):
-    end_time = calculate_end_time(new_start_time, duration)
+# ----------------------------
 
-    event = service.events().get(
-        calendarId=os.getenv("GOOGLE_CALENDAR_ID", "primary"),
-        eventId=event_id
-    ).execute()
+def update_event(service, event_id, start_time, duration=30):
+    end_time = calculate_end_time(start_time, duration)
 
-    event["start"]["dateTime"] = new_start_time
+    calendar_id = os.getenv("GOOGLE_CALENDAR_ID", "primary")
+
+    try:
+        event = service.events().get(
+            calendarId=calendar_id,
+            eventId=event_id
+        ).execute()
+    except Exception as e:
+        raise ValueError(f"Event not found in Google Calendar: {event_id}") from e
+
+    event["start"]["dateTime"] = start_time
     event["end"]["dateTime"] = end_time
 
-    if "reminders" not in event:
-        event["reminders"] = {
-            "useDefault": False,
-            "overrides": [
-                {"method": "email", "minutes": 60},
-                {"method": "popup", "minutes": 10}
-            ]
-        }
+    # ensure reminders always exist
+    event["reminders"] = {
+        "useDefault": False,
+        "overrides": [
+            {"method": "email", "minutes": 60},
+            {"method": "popup", "minutes": 10}
+        ]
+    }
 
     updated_event = service.events().update(
-        calendarId=os.getenv("GOOGLE_CALENDAR_ID", "primary"),
+        calendarId=calendar_id,
         eventId=event_id,
         body=event,
         sendUpdates="all"
@@ -100,10 +120,19 @@ def update_event(service, event_id, new_start_time, duration=30):
     return updated_event
 
 
-
+# ----------------------------
 # Delete Event
+# ----------------------------
+
 def delete_event(service, event_id):
-    service.events().delete(
-        calendarId=os.getenv("GOOGLE_CALENDAR_ID", "primary"),
-        eventId=event_id
-    ).execute()
+    calendar_id = os.getenv("GOOGLE_CALENDAR_ID", "primary")
+
+    try:
+        service.events().delete(
+            calendarId=calendar_id,
+            eventId=event_id
+        ).execute()
+    except Exception:
+        # 🔥 safe delete (idempotent behavior)
+        # event may already be deleted externally
+        pass

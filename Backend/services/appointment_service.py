@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+import json
+
 from services.calendar_sync_service import CalendarSyncService
 from models.db_models import Appointment, Patient, Doctor, WorkingHours
 
@@ -8,6 +10,30 @@ from models.db_models import Appointment, Patient, Doctor, WorkingHours
 class AppointmentService:
 
     SLOT_MINUTES = 30
+
+    # =========================
+    # ENRICH RESPONSE (NEW)
+    # =========================
+    @staticmethod
+    def enrich_appointment(appt: Appointment):
+        if not appt:
+            return None
+
+        return {
+            "id": appt.id,
+            "doctor_id": appt.doctor_id,
+            "doctor_name": appt.doctor.user.name if appt.doctor and appt.doctor.user else None,
+
+            "patient_id": appt.patient_id,
+            "patient_name": appt.patient.name if appt.patient else None,
+
+            "start_time": appt.start_time,
+            "end_time": appt.end_time,
+            "status": appt.status,
+            "notes": appt.notes,
+            "google_event_id": appt.google_event_id,
+            "reminder_time": appt.reminder_time
+        }
 
     # =========================
     # PATIENT
@@ -21,12 +47,12 @@ class AppointmentService:
             db.add(patient)
             db.commit()
             db.refresh(patient)
-        elif email and not patient.email:  # Update email if not set
+
+        elif email and not patient.email:
             patient.email = email
             db.commit()
 
         return patient
-
 
     # =========================
     # WORKING HOURS
@@ -37,7 +63,6 @@ class AppointmentService:
             WorkingHours.doctor_id == doctor_id,
             WorkingHours.day_of_week == date.weekday()
         ).first()
-
 
     # =========================
     # GENERATE SLOTS
@@ -59,7 +84,6 @@ class AppointmentService:
             datetime.strptime(working.end_time, "%H:%M").time()
         )
 
-        # appointments for this doctor ONLY for that day
         appointments = db.query(Appointment).filter(
             Appointment.doctor_id == doctor_id,
             Appointment.status != "CANCELLED"
@@ -89,7 +113,6 @@ class AppointmentService:
 
         return slots
 
-
     # =========================
     # AVAILABILITY CHECK
     # =========================
@@ -105,7 +128,6 @@ class AppointmentService:
         ).first()
 
         return exists is None
-
 
     # =========================
     # BOOK APPOINTMENT
@@ -152,17 +174,18 @@ class AppointmentService:
         db.commit()
         db.refresh(appointment)
 
-        #  Google sync - use doctor's stored token if available
+        # =========================
+        # GOOGLE SYNC
+        # =========================
         google_event_id = None
-        
-        # Use provided credentials or try to get stored ones
+
         google_creds = credentials
+
         if not google_creds and doctor.google_token:
-            import json
             try:
                 google_creds = json.loads(doctor.google_token)
             except:
-                pass
+                google_creds = None
 
         if google_creds:
             google_event_id = CalendarSyncService.create(
@@ -173,27 +196,28 @@ class AppointmentService:
             if google_event_id:
                 appointment.google_event_id = google_event_id
                 db.commit()
-
+                db.refresh(appointment)
+        print("GOOGLE CREDS RECEIVED:", credentials)
         return appointment
 
-
     # =========================
-    # GET ALL
+    # GET ALL (ENRICHED)
     # =========================
     @staticmethod
     def get_all(db: Session):
-        return db.query(Appointment).all()
-
+        appointments = db.query(Appointment).all()
+        return [AppointmentService.enrich_appointment(a) for a in appointments]
 
     # =========================
-    # GET ONE
+    # GET ONE (ENRICHED)
     # =========================
     @staticmethod
     def get_by_id(db: Session, appointment_id: int):
-        return db.query(Appointment).filter(
+        appt = db.query(Appointment).filter(
             Appointment.id == appointment_id
         ).first()
 
+        return AppointmentService.enrich_appointment(appt)
 
     # =========================
     # CANCEL
@@ -201,19 +225,21 @@ class AppointmentService:
     @staticmethod
     def cancel(db: Session, appointment_id: int, credentials=None):
 
-        appt = AppointmentService.get_by_id(db, appointment_id)
+        appt = db.query(Appointment).filter(
+            Appointment.id == appointment_id
+        ).first()
 
         if not appt:
             raise Exception("Appointment not found")
 
         appt.status = "CANCELLED"
 
-        #  Google sync
         CalendarSyncService.delete(appt, credentials)
 
         db.commit()
-        return appt
+        db.refresh(appt)
 
+        return AppointmentService.enrich_appointment(appt)
 
     # =========================
     # RESCHEDULE
@@ -221,7 +247,9 @@ class AppointmentService:
     @staticmethod
     def reschedule(db: Session, appointment_id: int, new_time: datetime, credentials=None):
 
-        appt = AppointmentService.get_by_id(db, appointment_id)
+        appt = db.query(Appointment).filter(
+            Appointment.id == appointment_id
+        ).first()
 
         if not appt:
             raise Exception("Appointment not found")
@@ -235,14 +263,16 @@ class AppointmentService:
         appt.end_time = new_time + timedelta(minutes=30)
         appt.status = "RESCHEDULED"
 
-        #  Google sync
         CalendarSyncService.update(appt, new_time, credentials)
 
         db.commit()
-        return appt
-    
+        db.refresh(appt)
 
+        return AppointmentService.enrich_appointment(appt)
 
+    # =========================
+    # CHATBOT BOOKING (FIXED)
+    # =========================
     @staticmethod
     def book_from_chatbot(db, doctor_id, start_time, patient_name, patient_phone):
 
@@ -251,8 +281,9 @@ class AppointmentService:
         if not AppointmentService.is_available(db, doctor_id, start_time):
             raise Exception("Slot not available")
 
-        patient = AppointmentService.get_or_create_patient(db, patient_name, patient_phone)
-        reminder_time = start_time - timedelta(hours=1)
+        patient = AppointmentService.get_or_create_patient(
+            db, patient_name, patient_phone
+        )
 
         appointment = Appointment(
             doctor_id=doctor_id,
@@ -260,22 +291,24 @@ class AppointmentService:
             start_time=start_time,
             end_time=start_time + timedelta(minutes=30),
             status="SCHEDULED",
-            reminder_time=reminder_time
+            reminder_time=start_time - timedelta(hours=1)
         )
 
         db.add(appointment)
         db.commit()
         db.refresh(appointment)
 
-        return appointment
-    
+        return AppointmentService.enrich_appointment(appointment)
 
-
-
+    # =========================
+    # UPDATE STATUS
+    # =========================
     @staticmethod
     def update_status(db: Session, appointment_id: int, status: str):
 
-        appt = AppointmentService.get_by_id(db, appointment_id)
+        appt = db.query(Appointment).filter(
+            Appointment.id == appointment_id
+        ).first()
 
         if not appt:
             raise Exception("Appointment not found")
@@ -289,14 +322,17 @@ class AppointmentService:
         db.commit()
         db.refresh(appt)
 
-        return appt
-    
+        return AppointmentService.enrich_appointment(appt)
 
-    # add notes
+    # =========================
+    # ADD NOTES
+    # =========================
     @staticmethod
     def add_notes(db: Session, appointment_id: int, notes: str):
 
-        appt = AppointmentService.get_by_id(db, appointment_id)
+        appt = db.query(Appointment).filter(
+            Appointment.id == appointment_id
+        ).first()
 
         if not appt:
             raise Exception("Appointment not found")
@@ -305,4 +341,4 @@ class AppointmentService:
         db.commit()
         db.refresh(appt)
 
-        return appt
+        return AppointmentService.enrich_appointment(appt)

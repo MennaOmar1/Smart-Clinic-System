@@ -1,29 +1,59 @@
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import os
+import json
+import base64
 
-EMAIL = os.getenv("EMAIL_ADDRESS")
-PASSWORD = os.getenv("EMAIL_PASSWORD")
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
+from email.mime.text import MIMEText
+
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
 
 
-def send_email(to_email: str, subject: str, body: str):
-    if not EMAIL or not PASSWORD:
-        raise ValueError("Email sender credentials are not configured.")
+def send_email(
+    doctor,
+    to_email: str,
+    subject: str,
+    body: str
+):
 
-    msg = MIMEMultipart()
-    msg["From"] = EMAIL
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
+    if not doctor.google_token:
+        raise ValueError("Doctor has no Google token")
 
-    try:
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
-        server.starttls()
-        server.login(EMAIL, PASSWORD)
-        server.sendmail(EMAIL, to_email, msg.as_string())
-        server.quit()
-    except Exception as e:
-        print("Email failed:", str(e))
+    google_token = json.loads(doctor.google_token)
+
+    credentials = Credentials(
+        token=google_token["access_token"],
+        refresh_token=google_token["refresh_token"],
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=os.getenv("GOOGLE_CLIENT_ID"),
+        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+        scopes=[
+            "https://www.googleapis.com/auth/gmail.send"
+        ]
+    )
+
+    service = build(
+        "gmail",
+        "v1",
+        credentials=credentials
+    )
+
+    message = MIMEText(body)
+
+    message["to"] = to_email
+    message["subject"] = subject
+
+    raw_message = base64.urlsafe_b64encode(
+        message.as_bytes()
+    ).decode()
+
+    send_message = (
+        service.users()
+        .messages()
+        .send(
+            userId="me",
+            body={"raw": raw_message}
+        )
+        .execute()
+    )
+
+    return send_message
