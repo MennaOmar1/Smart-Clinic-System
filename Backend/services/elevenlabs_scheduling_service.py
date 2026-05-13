@@ -124,16 +124,20 @@ class ElevenLabsSchedulingService:
 
         # Google sync
         doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
-        if doctor and doctor.google_token:
-            import json
-            try:
-                google_creds = json.loads(doctor.google_token)
-                google_event_id = CalendarSyncService.create(appointment, google_creds)
-                if google_event_id:
-                    appointment.google_event_id = google_event_id
-                    db.commit()
-            except Exception:
-                pass
+        if doctor:
+            if doctor.google_token:
+                import json
+                try:
+                    google_creds = json.loads(doctor.google_token)
+                    google_event_id = CalendarSyncService.create(appointment, google_creds)
+                    if google_event_id:
+                        appointment.google_event_id = google_event_id
+                except Exception as e:
+                    appointment.notes = (appointment.notes or "") + f"\n[Sync Config Error: {str(e)}]"
+            else:
+                appointment.notes = (appointment.notes or "") + "\n[Google Sync Skipped: Doctor has no Google Token saved in the system]"
+            
+            db.commit()
 
         confirmation = (
             f"Appointment confirmed for {start_time.strftime('%Y-%m-%d %H:%M')} "
