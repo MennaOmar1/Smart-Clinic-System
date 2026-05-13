@@ -37,6 +37,7 @@ Status: {appointment.status}
 
         except Exception as e:
             print("Google create failed:", e)
+            appointment.notes = (appointment.notes or "") + f"\n[Google Sync Failed: {str(e)}]"
             return None
 
 
