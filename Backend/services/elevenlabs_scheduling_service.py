@@ -213,7 +213,9 @@ class ElevenLabsSchedulingService:
 
     @staticmethod
     def _to_db_time(value: datetime) -> datetime:
-        return ElevenLabsSchedulingService.normalize_to_cairo(value).replace(tzinfo=None)
+        return ElevenLabsSchedulingService.normalize_to_cairo(value).replace(
+            tzinfo=None, second=0, microsecond=0
+        )
 
     @staticmethod
     def _status_for_error(error_code: str | None) -> int:
