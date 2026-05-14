@@ -4,6 +4,7 @@ import json
 
 from fastapi import APIRouter, Request, HTTPException, Depends
 from authlib.integrations.base_client.errors import OAuthError
+from fastapi.responses import RedirectResponse
 from core.oauth import oauth
 from core.security import create_access_token
 from sqlalchemy.orm import Session
@@ -156,7 +157,15 @@ async def auth_callback(
         "email": user.email
     })
 
-    return {
-        "access_token": access_token,
-        "role": user.role
-    }
+    FRONTEND_URL = os.getenv(
+        "FRONTEND_URL",
+        "http://localhost:3000"
+    )
+
+    redirect_url = (
+        f"{FRONTEND_URL}/auth/success"
+        f"?token={access_token}"
+        f"&role={user.role}"
+    )
+
+    return RedirectResponse(url=redirect_url)
