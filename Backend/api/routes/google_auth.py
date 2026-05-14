@@ -25,7 +25,7 @@ async def login(request: Request):
 
     redirect_uri = os.getenv(
         "GOOGLE_CALLBACK_URL",
-        "https://smart-clinic-system-production.up.railway.app/auth/google/callback"
+        "http://127.0.0.1:8000/auth/google/callback"
     )
 
     return await oauth.google.authorize_redirect(
