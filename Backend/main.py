@@ -1,6 +1,6 @@
 from dotenv import load_dotenv
 from sqlalchemy import text
-
+from fastapi.middleware.cors import CORSMiddleware
 from services.llm_service import LLMService
 load_dotenv()
 import os
@@ -20,6 +20,13 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 SESSION_SECRET_KEY = os.getenv(
     "SESSION_SECRET_KEY",

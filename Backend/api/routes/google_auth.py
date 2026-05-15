@@ -161,9 +161,9 @@ async def auth_callback(
         "FRONTEND_URL",
         "http://localhost:3000"
     )
-
+    print("APP JWT:", access_token)
     redirect_url = (
-        f"{FRONTEND_URL}/auth/success"
+        f"{FRONTEND_URL}/auth/callback"
         f"?token={access_token}"
         f"&role={user.role}"
     )
