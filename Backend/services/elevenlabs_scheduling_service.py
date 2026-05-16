@@ -129,7 +129,10 @@ class ElevenLabsSchedulingService:
                 import json
                 try:
                     google_creds = json.loads(doctor.google_token)
-                    google_event_id = CalendarSyncService.create(appointment, google_creds)
+                    google_event_id = CalendarSyncService.create(
+                        db=db,
+                        appointment_id=appointment.id,
+                        google_token=google_creds)
                     if google_event_id:
                         appointment.google_event_id = google_event_id
                 except Exception as e:

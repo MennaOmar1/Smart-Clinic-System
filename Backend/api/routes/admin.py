@@ -1,20 +1,29 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from core.database import get_db
 from core.security import hash_password
-from models.db_models import User
+from models.db_models import User, Doctor, Appointment
 from schemas.user import UserCreate, UserResponse
 from services.appointment_service import AppointmentService
-from schemas.appointment import AdminUpdateAppointment, AppointmentResponse
+from schemas.appointment import (
+    AdminUpdateAppointment,
+    AppointmentResponse
+)
 from api.deps import require_roles
 from datetime import timedelta
 from services.calendar_sync_service import CalendarSyncService
 from services.email_service import send_email
 
+import json
+
 router = APIRouter(tags=["Admin"])
 
 
-@router.get("/appointments", response_model=list[AppointmentResponse])
+# ================= GET ALL APPOINTMENTS =================
+@router.get(
+    "/appointments",
+    response_model=list[AppointmentResponse]
+)
 def get_all_appointments(
     db: Session = Depends(get_db),
     user=Depends(require_roles(["admin"]))
@@ -22,6 +31,7 @@ def get_all_appointments(
     return AppointmentService.get_all(db)
 
 
+# ================= FILTER APPOINTMENTS =================
 @router.get("/appointments/filter")
 def filter_appointments(
     doctor_id: int | None = None,
@@ -29,31 +39,53 @@ def filter_appointments(
     db: Session = Depends(get_db),
     user=Depends(require_roles(["admin"]))
 ):
+
     appointments = AppointmentService.get_all(db)
 
     if doctor_id:
-        appointments = [a for a in appointments if a.doctor_id == doctor_id]
+        appointments = [
+            a for a in appointments
+            if a["doctor_id"] == doctor_id
+        ]
 
     if status:
-        appointments = [a for a in appointments if a.status == status]
+        appointments = [
+            a for a in appointments
+            if a["status"] == status
+        ]
 
     return {"appointments": appointments}
 
 
-@router.patch("/appointments/{appointment_id}", response_model=AppointmentResponse)
+# ================= UPDATE APPOINTMENT =================
+@router.patch(
+    "/appointments/{appointment_id}",
+    response_model=AppointmentResponse
+)
 def update_appointment(
     appointment_id: int,
     data: AdminUpdateAppointment,
-    request: Request,
     db: Session = Depends(get_db),
     user=Depends(require_roles(["admin"]))
 ):
-    appt = AppointmentService.get_by_id(db, appointment_id)
+
+    # REAL ORM OBJECT
+    appt = db.query(Appointment).filter(
+        Appointment.id == appointment_id
+    ).first()
 
     if not appt:
-        raise HTTPException(404, "Not found")
+        raise HTTPException(404, "Appointment not found")
 
-    google_token = request.session.get("google_token")
+    # ================= GOOGLE TOKEN =================
+    doctor = db.query(Doctor).filter(
+        Doctor.id == appt.doctor_id
+    ).first()
+
+    google_token = None
+
+    if doctor and doctor.google_token:
+        google_token = json.loads(doctor.google_token)
 
     # ================= UPDATE STATUS =================
     if data.status:
@@ -65,37 +97,66 @@ def update_appointment(
 
     # ================= RESCHEDULE =================
     if data.time:
-        if not AppointmentService.is_available(db, appt.doctor_id, data.time):
-            raise HTTPException(400, "Time slot not available")
+
+        if not AppointmentService.is_available(
+            db,
+            appt.doctor_id,
+            data.time
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Time slot not available"
+            )
 
         appt.start_time = data.time
         appt.end_time = data.time + timedelta(minutes=30)
 
-        # Google sync
-        CalendarSyncService.update(appt, data.time, google_token)
+        # Google Calendar update
+        CalendarSyncService.update(
+            db=db,
+            appointment_id=appt.id,
+            new_time=data.time,
+            google_token=google_token
+        )
 
     db.commit()
     db.refresh(appt)
 
-    return appt
+    return AppointmentService.enrich_appointment(appt)
 
 
+# ================= DELETE APPOINTMENT =================
 @router.delete("/appointments/{appointment_id}")
 def delete_appointment(
     appointment_id: int,
-    request: Request,
     db: Session = Depends(get_db),
     user=Depends(require_roles(["admin"]))
 ):
-    appt = AppointmentService.get_by_id(db, appointment_id)
+
+    # REAL ORM OBJECT
+    appt = db.query(Appointment).filter(
+        Appointment.id == appointment_id
+    ).first()
 
     if not appt:
-        raise HTTPException(404, "Not found")
+        raise HTTPException(404, "Appointment not found")
 
-    google_token = request.session.get("google_token")
+    # ================= GOOGLE TOKEN =================
+    doctor = db.query(Doctor).filter(
+        Doctor.id == appt.doctor_id
+    ).first()
 
-    # Google delete
-    CalendarSyncService.delete(appt, google_token)
+    google_token = None
+
+    if doctor and doctor.google_token:
+        google_token = json.loads(doctor.google_token)
+
+    # ================= GOOGLE DELETE =================
+    CalendarSyncService.delete(
+        db=db,
+        appointment_id=appt.id,
+        google_token=google_token
+    )
 
     db.delete(appt)
     db.commit()
@@ -103,13 +164,17 @@ def delete_appointment(
     return {"message": "Deleted successfully"}
 
 
+# ================= CREATE USER =================
 @router.post("/users", response_model=UserResponse)
 def create_user(
     data: UserCreate,
     db: Session = Depends(get_db),
     user=Depends(require_roles(["admin"]))
 ):
-    existing = db.query(User).filter(User.email == data.email).first()
+
+    existing = db.query(User).filter(
+        User.email == data.email
+    ).first()
 
     if existing:
         raise HTTPException(400, "User already exists")
@@ -118,7 +183,7 @@ def create_user(
         email=data.email,
         role=data.role,
         name=data.email.split("@")[0],
-        password=hash_password("123456")  # default password
+        password=hash_password("123456")
     )
 
     db.add(new_user)
@@ -144,7 +209,10 @@ def delete_user(
     db: Session = Depends(get_db),
     user=Depends(require_roles(["admin"]))
 ):
-    u = db.query(User).filter(User.id == user_id).first()
+
+    u = db.query(User).filter(
+        User.id == user_id
+    ).first()
 
     if not u:
         raise HTTPException(404, "User not found")
@@ -159,17 +227,14 @@ def delete_user(
 
 
 
-
-
-
-
-
+# ================= TEST EMAIL =================
 @router.post("/test-email")
 def test_email():
+
     send_email(
         to_email="omarmenna041@gmail.com",
         subject="Test Email",
         body="Hello 👋 this is a test from FastAPI"
     )
-    return {"message": "Email sent (check inbox)"}
 
+    return {"message": "Email sent (check inbox)"}

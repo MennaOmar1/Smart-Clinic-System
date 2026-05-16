@@ -257,8 +257,9 @@ class AppointmentService:
 
         if google_creds:
             google_event_id = CalendarSyncService.create(
-                appointment,
-                google_creds
+                db=db,
+                appointment_id=appointment.id,
+                google_token=google_creds
             )
 
             if google_event_id:
@@ -287,11 +288,9 @@ class AppointmentService:
     # =========================
     @staticmethod
     def get_by_id(db: Session, appointment_id: int):
-        appt = db.query(Appointment).filter(
+        return db.query(Appointment).filter(
             Appointment.id == appointment_id
         ).first()
-
-        return AppointmentService.enrich_appointment(appt)
 
     # =========================
     # CANCEL
@@ -308,8 +307,11 @@ class AppointmentService:
 
         appt.status = "CANCELLED"
 
-        CalendarSyncService.delete(appt, credentials)
-
+        CalendarSyncService.delete(
+            db=db,
+            appointment_id=appt.id,
+            google_token=credentials
+        )
         db.commit()
         db.refresh(appt)
 
@@ -337,8 +339,12 @@ class AppointmentService:
         appt.end_time = new_time + timedelta(minutes=30)
         appt.status = "RESCHEDULED"
 
-        CalendarSyncService.update(appt, new_time, credentials)
-
+        CalendarSyncService.update(
+            db=db,
+            appointment_id=appt.id,
+            new_time=new_time,
+            google_token=credentials
+        )
         db.commit()
         db.refresh(appt)
 
@@ -411,8 +417,9 @@ class AppointmentService:
         if google_creds:
 
             google_event_id = CalendarSyncService.create(
-                appointment,
-                google_creds
+                db=db,
+                appointment_id=appointment.id,
+                google_token=google_creds
             )
 
             if google_event_id:

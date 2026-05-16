@@ -1,59 +1,53 @@
 import os
-import json
-import base64
+import smtplib
 
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+
+SMTP_SERVER = os.getenv("SMTP_SERVER")
+SMTP_PORT = int(os.getenv("SMTP_PORT"))
 
 
 def send_email(
-    doctor,
     to_email: str,
     subject: str,
     body: str
 ):
 
-    if not doctor.google_token:
-        raise ValueError("Doctor has no Google token")
+    try:
 
-    google_token = json.loads(doctor.google_token)
+        msg = MIMEMultipart()
 
-    credentials = Credentials(
-        token=google_token["access_token"],
-        refresh_token=google_token["refresh_token"],
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=os.getenv("GOOGLE_CLIENT_ID"),
-        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-        scopes=[
-            "https://www.googleapis.com/auth/gmail.send"
-        ]
-    )
+        msg["From"] = f"Clinify Support <{EMAIL_ADDRESS}>"
+        msg["To"] = to_email
+        msg["Subject"] = subject
 
-    service = build(
-        "gmail",
-        "v1",
-        credentials=credentials
-    )
+        msg.attach(MIMEText(body, "plain"))
 
-    message = MIMEText(body)
+        with smtplib.SMTP(
+            SMTP_SERVER,
+            SMTP_PORT
+        ) as server:
 
-    message["to"] = to_email
-    message["subject"] = subject
+            server.starttls()
 
-    raw_message = base64.urlsafe_b64encode(
-        message.as_bytes()
-    ).decode()
+            server.login(
+                EMAIL_ADDRESS,
+                EMAIL_PASSWORD
+            )
 
-    send_message = (
-        service.users()
-        .messages()
-        .send(
-            userId="me",
-            body={"raw": raw_message}
-        )
-        .execute()
-    )
+            server.sendmail(
+                EMAIL_ADDRESS,
+                to_email,
+                msg.as_string()
+            )
 
-    return send_message
+        print(f"✅ Email sent to {to_email}")
+
+    except Exception as e:
+
+        print(f"❌ Email failed: {e}")

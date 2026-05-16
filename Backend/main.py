@@ -11,7 +11,7 @@ from api.routes import (
     protected, doctor, auth_refresh, chatbot, elevenlabs
 )
 from core.database import Base, engine
-from core.scheduler import send_reminders
+from core.scheduler import start_scheduler
 from apscheduler.schedulers.background import BackgroundScheduler
 import logging
 from core.database import Base, engine
@@ -86,13 +86,9 @@ def home():
 scheduler = BackgroundScheduler()
 
 @app.on_event("startup")
-def start_scheduler():
-    try:
-        scheduler.add_job(send_reminders, "interval", minutes=5)
-        scheduler.start()
-        print("✅ Scheduler started")
-    except Exception as e:
-        print("❌ Scheduler failed:", e)
+def startup():
+
+    start_scheduler()
 
 # =========================
 # ENV VARS
