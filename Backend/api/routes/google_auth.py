@@ -124,10 +124,17 @@ async def auth_callback(
     # SAVE GOOGLE TOKEN
     # =========================
     google_token_data = {
-        "access_token": token.get("access_token"),
+        "token": token.get("access_token"),
         "refresh_token": token.get("refresh_token"),
-        "token_type": token.get("token_type"),
-        "scope": token.get("scope")
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "client_id": os.getenv("GOOGLE_CLIENT_ID"),
+        "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
+        "scopes": [
+            "https://www.googleapis.com/auth/calendar",
+            "https://www.googleapis.com/auth/userinfo.profile",
+            "https://www.googleapis.com/auth/userinfo.email",
+            "openid"
+        ]
     }
 
     doctor = db.query(Doctor).filter(

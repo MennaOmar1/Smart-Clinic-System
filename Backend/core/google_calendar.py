@@ -13,14 +13,15 @@ def build_google_credentials(token: dict):
         raise ValueError("Google credentials token is required")
 
     return Credentials(
-        token=token.get("access_token"),
+        token=token.get("token"),
         refresh_token=token.get("refresh_token"),
         token_uri=token.get("token_uri", "https://oauth2.googleapis.com/token"),
         client_id=token.get("client_id", os.getenv("GOOGLE_CLIENT_ID")),
         client_secret=token.get("client_secret", os.getenv("GOOGLE_CLIENT_SECRET"))
     )
-
-
+    
+    print("TOKEN DATA:", token)
+    
 def get_calendar_service(token: dict):
     creds = build_google_credentials(token)
     return build("calendar", "v3", credentials=creds)
@@ -67,6 +68,7 @@ def create_event(
             ]
         }
     }
+    print("CREATING GOOGLE EVENT")
 
     # 🔥 FIX: attendees must be list of emails, not looped incorrectly
     if attendee_email:
