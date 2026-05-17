@@ -25,7 +25,7 @@ async def login(request: Request):
 
     redirect_uri = os.getenv(
         "GOOGLE_CALLBACK_URL",
-        "http://127.0.0.1:8000/auth/google/callback"
+        "https://smart-clinic-system-production-a856.up.railway.app/auth/google/callback"
     )
 
     return await oauth.google.authorize_redirect(
@@ -166,7 +166,7 @@ async def auth_callback(
 
     FRONTEND_URL = os.getenv(
         "FRONTEND_URL",
-        "http://localhost:3000"
+        "https://smart-clinic-system-production-a856.up.railway.app"
     )
     print("APP JWT:", access_token)
     redirect_url = (
