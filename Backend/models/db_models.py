@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from core.database import Base
 
@@ -20,7 +20,10 @@ class Doctor(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     specialization = Column(String)
     google_token = Column(String, nullable=True)  # Stored as JSON string
-
+    bio = Column(Text, nullable=True)
+    phone = Column(String, nullable=True)
+    experience = Column(String, nullable=True)
+    image_url = Column(String, nullable=True)
     user = relationship("User")
 
 

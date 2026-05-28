@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 import json
 
@@ -280,18 +280,39 @@ class AppointmentService:
     # =========================
     @staticmethod
     def get_all(db: Session):
-        appointments = db.query(Appointment).all()
-        return [AppointmentService.enrich_appointment(a) for a in appointments]
 
+        appointments = (
+            db.query(Appointment)
+            .options(
+                joinedload(Appointment.doctor).joinedload(Doctor.user),
+                joinedload(Appointment.patient)
+            )
+            .all()
+        )
+
+        return [
+            AppointmentService.enrich_appointment(a)
+            for a in appointments
+        ]
+        
+        
     # =========================
     # GET ONE (ENRICHED)
     # =========================
     @staticmethod
     def get_by_id(db: Session, appointment_id: int):
-        return db.query(Appointment).filter(
-            Appointment.id == appointment_id
-        ).first()
 
+        appt = (
+            db.query(Appointment)
+            .options(
+                joinedload(Appointment.doctor).joinedload(Doctor.user),
+                joinedload(Appointment.patient)
+            )
+            .filter(Appointment.id == appointment_id)
+            .first()
+        )
+
+        return AppointmentService.enrich_appointment(appt)
     # =========================
     # CANCEL
     # =========================
