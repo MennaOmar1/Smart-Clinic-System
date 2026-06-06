@@ -12,7 +12,7 @@ from schemas.chatbot import ChatRequest
 
 router = APIRouter(tags=["Chatbot"])
 
-RAG_URL = "https://aversion-cradling-empirical.ngrok-free.dev/chat"
+RAG_URL = "https://egypt-medical-api-production.up.railway.app"
 
 
 # =========================
