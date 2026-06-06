@@ -6,12 +6,13 @@ class SessionService:
     @staticmethod
     def init():
         return {
-            "state": "start",
+            "state": "medical_assessment",
+            "current_complaint": None,
+            "history": [],
             "data": {
                 "age": None,
                 "gender": None
             },
-            "history": [],
             "booking": {
                 "doctor_id": None,
                 "specialization": None,

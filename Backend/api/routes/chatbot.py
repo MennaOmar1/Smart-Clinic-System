@@ -1,37 +1,41 @@
-from fastapi import APIRouter, Request, Response, Depends
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Request, Response
 import uuid
 import httpx
 import asyncio
 
-from core.database import get_db
-from services.chatbot_service import ChatbotService
-from services.llm_service import LLMService
 from services.session_service import SessionService
 from schemas.chatbot import ChatRequest
 
 router = APIRouter(tags=["Chatbot"])
 
-
 RAG_URL = "https://egypt-medical-api-production.up.railway.app/chat"
 
 
 # =========================
-# 🔁 RAG CALL WITH RETRY
+# RAG CALL WITH RETRY
 # =========================
 async def call_rag(payload):
     retries = 3
     timeout = 60.0
-
+    print("RAG REQUEST:", payload)
     async with httpx.AsyncClient(timeout=timeout) as client:
         for attempt in range(retries):
             try:
-                response = await client.post(RAG_URL, json=payload)
+                response = await client.post(
+                    RAG_URL,
+                    json=payload
+                )
+                
+                print("RAG STATUS:", response.status_code)
+                print("RAG BODY:", response.text)
+                
+                
                 response.raise_for_status()
+
                 return response.json()
 
             except (httpx.ReadTimeout, httpx.ConnectError) as e:
-                print(f"RAG ERROR (attempt {attempt+1}): {e}")
+                print(f"RAG ERROR (attempt {attempt + 1}): {e}")
 
             except Exception as e:
                 print(f"RAG UNKNOWN ERROR: {e}")
@@ -43,53 +47,108 @@ async def call_rag(payload):
 
 
 # =========================
-# 💬 MAIN CHAT
+# MEDICAL CHATBOT
 # =========================
 @router.post("/")
 async def chat(
     request: Request,
     response: Response,
-    payload: ChatRequest,
-    db: Session = Depends(get_db)
+    payload: ChatRequest
 ):
     try:
+
         message = payload.message.strip()
-        user_id = payload.user_id or request.cookies.get("chatbot_user_id") or str(uuid.uuid4())
+
+        user_id = (
+            payload.user_id
+            or request.cookies.get("chatbot_user_id")
+            or str(uuid.uuid4())
+        )
 
         # =========================
-        # 🧠 SESSION INIT
+        # SESSION
         # =========================
         session = SessionService.get_or_create(user_id)
 
-        if "history" not in session:
-            session["history"] = []
+        session.setdefault("history", [])
+        session.setdefault("current_complaint", None)
+        session.setdefault("state", "medical_assessment")
 
-        if "state" not in session:
-            session["state"] = "start"
+        history = session["history"][-6:]
 
-        history = session["history"]
 
         # =========================
-        # 🧹 RESET COMMAND (IMPORTANT)
+        # NEW MEDICAL COMPLAINT
         # =========================
-        if message.lower() in ["reset", "restart", "start over", "new"]:
+
+        current_complaint = session.get("current_complaint")
+
+        if current_complaint is None:
+
+            # أول شكوى
+            session["current_complaint"] = message
+        else:
+            complaint_keywords = [
+                "pain",
+                "headache",
+                "eye",
+                "stomach",
+                "chest",
+                "rash",
+                "itch",
+
+                "ألم",
+                "وجع",
+                "صداع",
+                "عين",
+                "بطن",
+                "صدر",
+                "حكة"
+            ]
+
+            is_new_complaint = (
+                len(message.split()) >= 4
+                and any(
+                    word in message.lower()
+                    for word in complaint_keywords
+                )
+                and message.lower() != current_complaint.lower()
+            )
+
+            if is_new_complaint:
+                print("NEW MEDICAL COMPLAINT DETECTED")
+
+                history = []
+
+                session["history"] = []
+
+                session["current_complaint"] = message
+        # =========================
+        # RESET
+        # =========================
+        if message.lower() in [
+            "reset",
+            "restart",
+            "start over",
+            "new"
+        ]:
+
             session["history"] = []
-            session["state"] = "start"
-            SessionService.update(user_id, session)
+            session["current_complaint"] = None
+
+            SessionService.update(
+                user_id,
+                session
+            )
 
             return {
                 "user_id": user_id,
-                "reply": "Session restarted. You can start again.",
+                "reply": "Session restarted.",
                 "data": None
             }
 
         # =========================
-        # 🧠 LIMIT HISTORY (IMPORTANT)
-        # =========================
-        history = history[-6:]   # نخليها قصيرة عشان Gemini يركز
-
-        # =========================
-        # 🧠 ADD USER MESSAGE
+        # SAVE USER MESSAGE
         # =========================
         history.append({
             "role": "user",
@@ -97,53 +156,46 @@ async def chat(
         })
 
         # =========================
-        # 🧠 FORCE RAG IF MEDICAL
+        # RAG
         # =========================
-        decision = LLMService.process_message(message)
+        rag_data = await call_rag({
+            "message": message,
+            "history": history
+        })
 
-        if decision["action"] == "rag_api":
-            session["state"] = "rag"
+        if not rag_data:
 
-        # =========================
-        # 🧠 RAG FLOW
-        # =========================
-        if session["state"] == "rag":
+            result = {
+                "reply": "Medical service is currently unavailable.",
+                "data": None
+            }
 
-            rag_data = await call_rag({
-                "message": message,
-                "history": history
-            })
-
-            if not rag_data:
-                result = {
-                    "reply": "Medical service is slow, but I’ll try to help.",
-                    "data": None
-                }
-            else:
-                result = {
-                    "reply": "Medical assessment:",
-                    "data": rag_data["response"]   # FIX IMPORTANT
-                }
-
-        # =========================
-        # 🧠 NORMAL FLOW
-        # =========================
         else:
-            result = ChatbotService.handle_chat(db, user_id, message)
+            rag_response = rag_data.get("response")
+            result = {
+                "reply": "Medical assessment:",
+                "data": rag_response
+            }
 
+            
         # =========================
-        # 🧠 SAVE RESPONSE
+        # SAVE RESPONSE
         # =========================
+        
         history.append({
             "role": "assistant",
-            "content": result.get("data") or result.get("reply", "")
+            "content": result.get("data") or result["reply"]
         })
 
         session["history"] = history
-        SessionService.update(user_id, session)
+
+        SessionService.update(
+            user_id,
+            session
+        )
 
         # =========================
-        # 🍪 COOKIE
+        # COOKIE
         # =========================
         response.set_cookie(
             key="chatbot_user_id",
@@ -158,5 +210,9 @@ async def chat(
         }
 
     except Exception as e:
+
         print("CHATBOT ERROR:", str(e))
-        return {"error": str(e)}
+
+        return {
+            "error": str(e)
+        }
