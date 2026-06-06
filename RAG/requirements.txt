@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+sentence-transformers
+faiss-cpu
+rapidfuzz
+pandas
+numpy
+requests
+gradio
+nest-asyncio

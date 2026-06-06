@@ -12,7 +12,8 @@ from schemas.chatbot import ChatRequest
 
 router = APIRouter(tags=["Chatbot"])
 
-RAG_URL = "https://egypt-medical-api-production.up.railway.app"
+
+RAG_URL = "https://egypt-medical-api-production.up.railway.app/chat"
 
 
 # =========================

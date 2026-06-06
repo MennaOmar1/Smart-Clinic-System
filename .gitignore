@@ -18,3 +18,11 @@ venv/
 
 # Logs
 *.log
+
+*.pyc
+*.pkl
+*.faiss
+*.bin
+*.log
+data/
+models/
