@@ -606,6 +606,10 @@ STATE_HANDLERS = {
 # MAIN SERVICE
 # ======================================================
 
+# ======================================================
+# MAIN SERVICE
+# ======================================================
+
 class ChatbotService:
 
     @staticmethod
@@ -628,44 +632,44 @@ class ChatbotService:
 
         return any(t in message for t in triggers)
 
+    @staticmethod
+    def handle_chat(db, user_id: str, message: str):
 
-@staticmethod
-def handle_chat(db, user_id: str, message: str):
+        session = SessionService.get_or_create(user_id)
 
-    session = SessionService.get_or_create(user_id)
+        session = ensure_session_structure(session)
 
-    session = ensure_session_structure(session)
+        state = session.get("state") or "start"
+        data = session.setdefault("data", {})
 
-    state = session.get("state") or "start"
-    data = session.setdefault("data", {})
+        import re
 
-    # =========================
-    # 🧠 Extract user info
-    # =========================
-    import re
+        # =========================
+        # Extract user info
+        # =========================
 
-    if "انثى" in message:
-        data["gender"] = "female"
-    elif "ذكر" in message:
-        data["gender"] = "male"
+        if "انثى" in message:
+            data["gender"] = "female"
+        elif "ذكر" in message:
+            data["gender"] = "male"
 
-    age_match = re.search(r'\d+', message)
-    if age_match:
-        data["age"] = int(age_match.group())
+        age_match = re.search(r"\d+", message)
+        if age_match:
+            data["age"] = int(age_match.group())
 
-    # =========================
-    # 🚨 FIX: SOFT RESET ONLY
-    # =========================
-    if state != "start" and ChatbotService.is_new_request(message):
-        session["state"] = "start"   # ❌ don't wipe data
+        # =========================
+        # Soft reset if new booking request
+        # =========================
+
+        if state != "start" and ChatbotService.is_new_request(message):
+            session["state"] = "start"
+            SessionService.update(user_id, session)
+            state = "start"
+
+        handler = STATE_HANDLERS.get(state, handle_start)
+
+        result = handler(db, user_id, message, session)
+
         SessionService.update(user_id, session)
-        state = "start"
 
-    handler = STATE_HANDLERS.get(state, handle_start)
-
-    result = handler(db, user_id, message, session)
-
-    # save session after handler
-    SessionService.update(user_id, session)
-
-    return result
+        return result
