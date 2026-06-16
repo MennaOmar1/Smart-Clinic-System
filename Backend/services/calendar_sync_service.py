@@ -1,6 +1,7 @@
 from zoneinfo import ZoneInfo
 import logging
 
+import json
 from sqlalchemy.orm import joinedload
 
 from core.google_calendar import (
@@ -51,7 +52,10 @@ class CalendarSyncService:
             if not appointment.patient:
                 logger.error("Appointment patient is missing")
                 return None
-
+            
+            print("GOOGLE TOKEN FROM DB:")
+            print(json.dumps(google_token, indent=2))
+            
             service = get_calendar_service(google_token)
 
             doctor_name = (

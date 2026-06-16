@@ -12,15 +12,24 @@ def build_google_credentials(token: dict):
     if not token:
         raise ValueError("Google credentials token is required")
 
-    return Credentials(
-        token=token.get("token"),
-        refresh_token=token.get("refresh_token"),
-        token_uri=token.get("token_uri", "https://oauth2.googleapis.com/token"),
-        client_id=token.get("client_id", os.getenv("GOOGLE_CLIENT_ID")),
-        client_secret=token.get("client_secret", os.getenv("GOOGLE_CLIENT_SECRET"))
-    )
-    
     print("TOKEN DATA:", token)
+    print("TOKEN KEYS:", token.keys())
+    creds = Credentials(
+        token=token.get("access_token"),
+        refresh_token=token.get("refresh_token"),
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=os.getenv("GOOGLE_CLIENT_ID"),
+        client_secret=os.getenv("GOOGLE_CLIENT_SECRET")
+    )
+
+    print("CREDS TOKEN:", creds.token)
+    print("CREDS REFRESH:", creds.refresh_token)
+    print("CLIENT ID:", creds.client_id)
+    print("TOKEN URI:", creds.token_uri)
+    print("VALID?", creds.valid)
+    print("EXPIRED?", creds.expired)
+
+    return creds
     
 def get_calendar_service(token: dict):
     creds = build_google_credentials(token)

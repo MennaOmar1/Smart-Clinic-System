@@ -37,6 +37,9 @@ def create_appointment(
         if doctor.google_token:
             import json
             try:
+                print("DOCTOR ID:", doctor.id)
+                print("DOCTOR OBJECT:", doctor)
+                print("GOOGLE TOKEN FIELD:", repr(doctor.google_token))
                 credentials = json.loads(doctor.google_token)
             except:
                 credentials = None
